@@ -1,3 +1,10 @@
+/**
+ * @module common/guards/ip-whitelist.guard
+ * @description
+ * Guard that restricts endpoint access to requests originating from a
+ * configured IP allowlist.
+ */
+
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Request } from "express";
@@ -5,7 +12,7 @@ import { ForbiddenException } from "../exceptions/forbidden.exception";
 
 /**
  * Restricts access to routes based on caller IP address.
- * Used on internal/webhook endpoints — not user-facing routes.
+ * Used on internal/webhook endpoints - not user-facing routes.
  *
  * Allowed IPs are read from INTERNAL_WEBHOOK_IPS env var (comma-separated).
  * Example: INTERNAL_WEBHOOK_IPS=127.0.0.1,10.0.0.1
@@ -18,6 +25,9 @@ import { ForbiddenException } from "../exceptions/forbidden.exception";
 export class IpWhitelistGuard implements CanActivate {
     private readonly allowedIps: string[];
 
+    /**
+     * @param config Configuration provider used to read allowed IP list.
+     */
     constructor(private readonly config: ConfigService) {
         const raw = this.config.get<string>("INTERNAL_WEBHOOK_IPS") ?? "";
         this.allowedIps = raw
@@ -26,6 +36,12 @@ export class IpWhitelistGuard implements CanActivate {
             .filter(Boolean);
     }
 
+    /**
+     * Determine whether the caller IP is present in the configured allowlist.
+     *
+     * @param context Current request execution context.
+     * @returns true when the request is authorized.
+     */
     canActivate(context: ExecutionContext): boolean {
         const request = context.switchToHttp().getRequest<Request>();
 

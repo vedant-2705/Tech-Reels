@@ -1,11 +1,24 @@
+/**
+ * @module database/database.service
+ * @description
+ * PostgreSQL service wrapper for pooled query execution and manual
+ * transaction management.
+ */
+
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Pool, PoolClient, QueryResult } from "pg";
 
+/**
+ * Provides typed query helpers and transaction client access to PostgreSQL.
+ */
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     private pool: Pool;
 
+    /**
+     * @param config Runtime configuration provider.
+     */
     constructor(private readonly config: ConfigService) {
         this.pool = new Pool({
             host: this.config.get<string>("DB_HOST"),
@@ -19,19 +32,29 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
+    /**
+     * Verify initial database connectivity during application bootstrap.
+     */
     async onModuleInit(): Promise<void> {
         // Eagerly verify DB connectivity on startup so we fail fast
         const client = await this.pool.connect();
         client.release();
     }
 
+    /**
+     * Gracefully close the PostgreSQL connection pool on shutdown.
+     */
     async onModuleDestroy(): Promise<void> {
         await this.pool.end();
     }
 
     /**
      * Execute a parameterised query.
-     * Use $1, $2, ... placeholders — never string interpolation.
+     * Use $1, $2, ... placeholders - never string interpolation.
+    *
+    * @param text SQL query text with positional placeholders.
+    * @param params Optional query parameter values.
+    * @returns Typed PostgreSQL query result.
      *
      * @example
      * const result = await this.db.query<User>(
@@ -50,6 +73,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     /**
      * Acquire a raw client for manual transaction management.
      * Always release the client in a finally block.
+    *
+    * @returns Connected pool client for explicit transaction control.
      *
      * @example
      * const client = await this.db.getClient();

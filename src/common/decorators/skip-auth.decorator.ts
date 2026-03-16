@@ -1,8 +1,12 @@
+/**
+ * @module common/decorators/skip-auth.decorator
+ * @description
+ * Mark a controller method as public - JwtAuthGuard will skip it.
+ */
+
 import { SetMetadata } from "@nestjs/common";
 
 /**
- * Mark a controller method as public — JwtAuthGuard will skip it.
- *
  * Usage:
  *   @SkipAuth()
  *   @Post('register')

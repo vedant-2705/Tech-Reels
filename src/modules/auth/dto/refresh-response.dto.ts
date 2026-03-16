@@ -1,8 +1,11 @@
 /**
- * Response DTO for POST /auth/refresh -> 200
- *
- * token_family stays the same across rotations - only the token value changes.
- * The client must replace its stored refresh_token with the new one immediately.
+ * @module modules/auth/dto/refresh-response.dto
+ * @description
+ * Response DTO returned after a successful refresh-token rotation.
+ */
+
+/**
+ * Token rotation response containing the new access/refresh token pair.
  */
 export interface RefreshResponseDto {
     access_token: string;

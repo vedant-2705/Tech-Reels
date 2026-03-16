@@ -1,3 +1,10 @@
+/**
+ * @module modules/auth/auth.service
+ * @description
+ * Authentication application service implementing registration, credential
+ * login, OAuth login, token refresh, logout, and profile retrieval flows.
+ */
+
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
@@ -56,8 +63,20 @@ interface TokenPair {
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
+/**
+ * Coordinates auth workflows, side effects, and token lifecycle management.
+ */
 @Injectable()
 export class AuthService {
+    /**
+     * @param authRepository Auth persistence and cache repository.
+     * @param oauthService OAuth integration service.
+     * @param jwtService JWT signing and verification service.
+     * @param config Runtime configuration provider.
+     * @param redis Redis pub/sub client.
+     * @param notificationQueue Queue for notification jobs.
+     * @param feedBuildQueue Queue for feed bootstrap jobs.
+     */
     constructor(
         private readonly authRepository: AuthRepository,
         private readonly oauthService: OAuthService,
@@ -69,7 +88,12 @@ export class AuthService {
         @InjectQueue(QUEUES.FEED_BUILD) private readonly feedBuildQueue: Queue,
     ) {}
 
-    //  Public: register 
+    /**
+     * Register a new user with email/password credentials.
+     *
+     * @param dto Registration payload.
+     * @returns Authentication response with user snapshot and tokens.
+     */
 
     async register(dto: RegisterDto): Promise<AuthResponseDto> {
         // 1. Check email uniqueness
@@ -117,7 +141,13 @@ export class AuthService {
         return this.buildAuthResponse(user, tokens, false);
     }
 
-    //  Public: login 
+    /**
+     * Authenticate a credential-based user.
+     *
+     * @param dto Login payload.
+     * @param ip Caller IP address used for rate limiting.
+     * @returns Authentication response with user snapshot and tokens.
+     */
 
     async login(dto: LoginDto, ip: string): Promise<AuthResponseDto> {
         // 1. Check login rate limit (5 failures / 15 min / IP+email)
@@ -181,7 +211,13 @@ export class AuthService {
         return this.buildAuthResponse(user, tokens, false);
     }
 
-    //  Public: oauthLogin 
+    /**
+     * Authenticate a user via OAuth authorization code flow.
+     *
+     * @param provider OAuth provider identifier.
+     * @param code Provider authorization code.
+     * @returns Authentication response with user snapshot and tokens.
+     */
 
     async oauthLogin(provider: string, code: string): Promise<AuthResponseDto> {
         // 1. Validate provider
@@ -274,7 +310,12 @@ export class AuthService {
         return this.buildAuthResponse(user, tokens, needsOnboarding);
     }
 
-    //  Public: refreshToken 
+    /**
+     * Refresh an authenticated session by rotating the refresh token.
+     *
+     * @param dto Refresh-token payload.
+     * @returns Rotated access/refresh token pair.
+     */
 
     async refreshToken(dto: RefreshTokenDto): Promise<RefreshResponseDto> {
         // 1. Verify refresh token signature and expiry (HS256)
@@ -366,7 +407,13 @@ export class AuthService {
         };
     }
 
-    //  Public: logout 
+    /**
+     * Revoke one authenticated session by token family.
+     *
+     * @param userId Authenticated user UUID.
+     * @param tokenFamily Token-family UUID.
+     * @returns Success message.
+     */
 
     async logout(
         userId: string,
@@ -385,7 +432,12 @@ export class AuthService {
         return { message: AUTH_MESSAGES.LOGGED_OUT };
     }
 
-    //  Public: logoutAll 
+    /**
+     * Revoke every active session for the authenticated user.
+     *
+     * @param userId Authenticated user UUID.
+     * @returns Success message.
+     */
 
     async logoutAll(userId: string): Promise<MessageResponseDto> {
         // 1. Revoke every refresh token for this user
@@ -398,7 +450,12 @@ export class AuthService {
         return { message: AUTH_MESSAGES.ALL_SESSIONS_TERMINATED };
     }
 
-    //  Public: getMe 
+    /**
+     * Retrieve the authenticated user's profile payload.
+     *
+     * @param userId Authenticated user UUID.
+     * @returns Detailed authenticated user profile.
+     */
 
     async getMe(userId: string): Promise<MeResponseDto> {
         const user = await this.authRepository.findById(userId);
@@ -426,7 +483,12 @@ export class AuthService {
         };
     }
 
-    //  Private: generateTokenPair 
+    /**
+     * Generate and persist a new access/refresh token pair.
+     *
+     * @param user Authenticated user entity.
+     * @returns Signed access token, refresh token, and token-family ID.
+     */
 
     private async generateTokenPair(user: User): Promise<TokenPair> {
         // 1. Sign access token - RS256, 15 min
@@ -470,10 +532,15 @@ export class AuthService {
         return { access_token, refresh_token, token_family };
     }
 
-    //  Private: generateUniqueUsername 
+    /**
+     * Produce a sanitized unique username candidate from a display name.
+     *
+     * @param name Source display name.
+     * @returns Unique username string.
+     */
 
     private async generateUniqueUsername(name: string): Promise<string> {
-        // Sanitise: lowercase, spaces → underscore, remove special chars
+        // Sanitise: lowercase, spaces -> underscore, remove special chars
         const base = name
             .toLowerCase()
             .replace(/\s+/g, "_")
@@ -491,7 +558,14 @@ export class AuthService {
         return attempt;
     }
 
-    //  Private: buildAuthResponse 
+    /**
+     * Map user and token data into the public auth response envelope.
+     *
+     * @param user Authenticated user entity.
+     * @param tokens Generated token pair.
+     * @param needsOnboarding Whether the client should continue onboarding.
+     * @returns API-facing authentication response DTO.
+     */
 
     private buildAuthResponse(
         user: User,

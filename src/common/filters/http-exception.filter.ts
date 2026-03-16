@@ -1,3 +1,10 @@
+/**
+ * @module common/filters/http-exception.filter
+ * @description
+ * Global HTTP exception filter that normalizes all thrown errors into a
+ * consistent API error response contract.
+ */
+
 import {
     ArgumentsHost,
     Catch,
@@ -8,8 +15,17 @@ import {
 import { Request, Response } from "express";
 import { AppException } from "../exceptions/app.exception";
 
+/**
+ * Converts application, framework, and unhandled errors into structured JSON.
+ */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+    /**
+     * Handle and serialize exceptions raised during request processing.
+     *
+     * @param exception Unknown thrown value from the request pipeline.
+     * @param host Execution context host for HTTP request/response objects.
+     */
     catch(exception: unknown, host: ArgumentsHost): void {
         const ctx = host.switchToHttp();
         const response = ctx.getResponse<Response>();
@@ -75,7 +91,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
             return;
         }
 
-        //  Unhandled — 500 
+        //  Unhandled - 500 
         console.error("[UnhandledException]", exception);
         response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
             type: "https://techreel.io/errors/internal-server-error",

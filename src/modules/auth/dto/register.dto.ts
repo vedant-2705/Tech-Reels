@@ -1,3 +1,9 @@
+/**
+ * @module modules/auth/dto/register.dto
+ * @description
+ * Request DTO for credential-based account registration.
+ */
+
 import {
     ArrayMaxSize,
     ArrayMinSize,
@@ -13,6 +19,10 @@ import { Transform } from "class-transformer";
 import { IsUUID } from "class-validator";
 import { EXPERIENCE_LEVELS, type ExperienceLevel } from "../entities/user.entity";
 
+/**
+ * Validates registration payload fields including credentials,
+ * topic selections, and declared experience level.
+ */
 export class RegisterDto {
     @IsEmail()
     @MaxLength(255)
@@ -32,7 +42,7 @@ export class RegisterDto {
     @IsString()
     @MinLength(3)
     @MaxLength(50)
-    // Letters, numbers, underscores only — no spaces
+    // Letters, numbers, underscores only - no spaces
     @Matches(/^[a-zA-Z0-9_]+$/, {
         message: "username may only contain letters, numbers, and underscores",
     })

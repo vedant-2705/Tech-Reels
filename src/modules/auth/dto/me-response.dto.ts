@@ -1,8 +1,11 @@
 /**
- * Response DTO for GET /auth/me -> 200
- *
- * Richer than AuthUserDto - includes bio, account_status,
- * streak details, last_active_date, and public_profile_token.
+ * @module modules/auth/dto/me-response.dto
+ * @description
+ * Response DTO returned by the authenticated profile endpoint.
+ */
+
+/**
+ * Detailed authenticated user profile payload for `GET /auth/me`.
  */
 export interface MeResponseDto {
     id: string;

@@ -1,3 +1,10 @@
+/**
+ * @module modules/auth/auth.controller
+ * @description
+ * Controller exposing authentication endpoints for registration, login,
+ * session refresh, logout, and authenticated profile lookup.
+ */
+
 import {
     Body,
     Controller,
@@ -26,20 +33,21 @@ import { SkipAuth } from "../../common/decorators/skip-auth.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 
 /**
- * AuthController - all routes under /api/v1/auth
- *
- * Rules:
- * - Controller only extracts params, calls service, and returns the result.
- * - NO business logic here - ever.
- * - NO direct DB or Redis calls - ever.
- * - Public routes use @SkipAuth() to bypass the global JwtAuthGuard.
- * - Protected routes rely on the global guard; userId extracted via @CurrentUser.
+ * Thin transport layer for auth use cases.
  */
 @Controller("auth")
 export class AuthController {
+    /**
+     * @param authService Authentication application service.
+     */
     constructor(private readonly authService: AuthService) {}
 
-    //  POST /auth/register 
+    /**
+     * Register a new credential-based user account.
+     *
+     * @param dto Registration payload.
+     * @returns Authentication response with user snapshot and tokens.
+     */
 
     @Post("register")
     @SkipAuth()
@@ -48,7 +56,16 @@ export class AuthController {
         return this.authService.register(dto);
     }
 
-    //  POST /auth/login 
+    /**
+     * Authenticate a user with email/password credentials.
+     *
+     * Resolves the caller IP from `X-Forwarded-For` when present so the
+     * downstream service can apply rate-limiting rules correctly.
+     *
+     * @param dto Login payload.
+     * @param req HTTP request used to extract caller IP.
+     * @returns Authentication response with user snapshot and tokens.
+     */
 
     @Post("login")
     @SkipAuth()
@@ -70,14 +87,13 @@ export class AuthController {
         return this.authService.login(dto, ip);
     }
 
-    //  POST /auth/oauth/:provider 
-    // Returns 201 for brand new users, 200 for existing.
-    // NestJS always sends the status from @HttpCode - for dynamic 200/201
-    // the service returns the data and the controller sets 200 by default;
-    // new-user 201 is handled by checking needs_onboarding in the response.
-    // Per the LLD the HTTP status is 201 for new users / 200 for existing -
-    // we achieve this by letting the default 201 apply to POST and the client
-    // reads needs_onboarding to determine the flow.
+    /**
+     * Complete OAuth authentication for the selected provider.
+     *
+     * @param provider OAuth provider route parameter.
+     * @param dto OAuth authorization-code payload.
+     * @returns Authentication response with user snapshot and tokens.
+     */
 
     @Post("oauth/:provider")
     @SkipAuth()
@@ -89,7 +105,12 @@ export class AuthController {
         return this.authService.oauthLogin(provider, dto.code);
     }
 
-    //  POST /auth/refresh 
+    /**
+     * Refresh an existing authenticated session.
+     *
+     * @param dto Refresh-token payload.
+     * @returns Rotated token pair and expiry metadata.
+     */
 
     @Post("refresh")
     @SkipAuth()
@@ -98,8 +119,13 @@ export class AuthController {
         return this.authService.refreshToken(dto);
     }
 
-    //  POST /auth/logout 
-    // Protected - requires valid JWT. Terminates one session by token_family.
+    /**
+     * Revoke one authenticated session by token family.
+     *
+     * @param dto Logout payload.
+     * @param userId Authenticated user identifier from JWT context.
+     * @returns Success message.
+     */
 
     @Post("logout")
     @HttpCode(HttpStatus.OK)
@@ -110,8 +136,12 @@ export class AuthController {
         return this.authService.logout(userId, dto.token_family);
     }
 
-    //  POST /auth/logout-all 
-    // Protected - requires valid JWT. Terminates all sessions for this user.
+    /**
+     * Revoke every active session for the authenticated user.
+     *
+     * @param userId Authenticated user identifier from JWT context.
+     * @returns Success message.
+     */
 
     @Post("logout-all")
     @HttpCode(HttpStatus.OK)
@@ -121,8 +151,12 @@ export class AuthController {
         return this.authService.logoutAll(userId);
     }
 
-    //  GET /auth/me 
-    // Protected - requires valid JWT.
+    /**
+     * Return the authenticated user's profile snapshot.
+     *
+     * @param userId Authenticated user identifier from JWT context.
+     * @returns Current user profile data.
+     */
 
     @Get("me")
     @HttpCode(HttpStatus.OK)

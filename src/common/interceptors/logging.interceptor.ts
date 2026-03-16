@@ -1,3 +1,10 @@
+/**
+ * @module common/interceptors/logging.interceptor
+ * @description
+ * HTTP logging interceptor that records request method, path, status, and
+ * execution duration for successful and failed responses.
+ */
+
 import {
     CallHandler,
     ExecutionContext,
@@ -18,6 +25,13 @@ import { Observable, tap } from "rxjs";
  */
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
+    /**
+     * Log inbound request details and outbound outcome timing.
+     *
+     * @param context Current request execution context.
+     * @param next Call handler representing the downstream pipeline.
+     * @returns Observable wrapping the handler response stream.
+     */
     intercept(
         context: ExecutionContext,
         next: CallHandler,

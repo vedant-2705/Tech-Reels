@@ -1,13 +1,19 @@
+/**
+ * @module common/decorators/current-user.decorator
+ * @description
+ * A custom parameter decorator to extract the current authenticated user from the request.
+ */
+
 import { createParamDecorator, ExecutionContext } from "@nestjs/common";
 
 /**
  * Extracts the current authenticated user (or a single field) from the request.
  * Populated by JwtStrategy.validate() after a successful token verification.
  *
- * Usage — full user object:
+ * Usage - full user object:
  *   async getMe(@CurrentUser() user: JwtUser) { ... }
  *
- * Usage — single field (most common):
+ * Usage - single field (most common):
  *   async logout(@CurrentUser('userId') userId: string) { ... }
  *   async getMe(@CurrentUser('role') role: string) { ... }
  */

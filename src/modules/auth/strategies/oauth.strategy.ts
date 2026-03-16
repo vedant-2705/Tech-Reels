@@ -1,9 +1,19 @@
+/**
+ * @module modules/auth/strategies/oauth.strategy
+ * @description
+ * OAuth integration service responsible for exchanging provider authorization
+ * codes and normalizing provider profile data.
+ */
+
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
 import { OAuthFailedException } from "@common/exceptions/oauth-failed.exception";
 import { AUTH_OAUTH, OAuthProvider } from "../auth.constants";
 
+/**
+ * Normalized OAuth profile returned from provider integrations.
+ */
 export interface OAuthProfile {
     provider_user_id: string;
     email: string;
@@ -25,8 +35,18 @@ export interface OAuthProfile {
  */
 @Injectable()
 export class OAuthService {
+    /**
+     * @param config Runtime configuration provider.
+     */
     constructor(private readonly config: ConfigService) {}
 
+    /**
+     * Exchange an authorization code for a normalized provider profile.
+     *
+     * @param provider Selected OAuth provider.
+     * @param code Provider authorization code.
+     * @returns Normalized OAuth profile.
+     */
     async exchangeCode(
         provider: OAuthProvider,
         code: string,
@@ -37,7 +57,12 @@ export class OAuthService {
         return this.exchangeGithub(code);
     }
 
-    //  Google 
+    /**
+     * Perform Google OAuth code exchange and profile lookup.
+     *
+     * @param code Google authorization code.
+     * @returns Normalized Google profile.
+     */
 
     private async exchangeGoogle(code: string): Promise<OAuthProfile> {
         // Step 1 - exchange code for access token
@@ -101,7 +126,12 @@ export class OAuthService {
         // accessToken is not stored or returned - garbage collected here
     }
 
-    //  GitHub 
+    /**
+     * Perform GitHub OAuth code exchange and profile lookup.
+     *
+     * @param code GitHub authorization code.
+     * @returns Normalized GitHub profile.
+     */
 
     private async exchangeGithub(code: string): Promise<OAuthProfile> {
         // Step 1 - exchange code for access token

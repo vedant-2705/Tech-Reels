@@ -1,3 +1,10 @@
+/**
+ * @module modules/auth/auth.module
+ * @description
+ * Nest module that wires together authentication controllers, services,
+ * repositories, and JWT strategy configuration.
+ */
+
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
@@ -12,14 +19,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
 import { OAuthService } from "./strategies/oauth.strategy";
 
 /**
- * AuthModule
- *
- * JwtModule is registered with useFactory so it reads the RSA keys from
- * ConfigService at runtime. The module-level config (privateKey / algorithms)
- * covers the default sign options; per-call overrides in AuthService handle
- * the RS256 vs HS256 split.
- *
- * PassportModule registers the 'jwt' strategy name used by JwtAuthGuard.
+ * Registers auth runtime dependencies and JWT signing/verification support.
  */
 @Module({
     imports: [

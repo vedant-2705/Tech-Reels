@@ -1,3 +1,10 @@
+/**
+ * @module modules/auth/strategies/jwt.strategy
+ * @description
+ * Passport JWT strategy that validates signed access tokens and enforces
+ * token-version based server-side session invalidation.
+ */
+
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
@@ -10,6 +17,9 @@ import {
     AUTH_REDIS_KEYS,
 } from "../auth.constants";
 
+/**
+ * JWT claims expected in signed access tokens.
+ */
 export interface JwtPayload {
     sub: string; // userId (UUID v7)
     role: string; // 'user' | 'admin'
@@ -19,14 +29,25 @@ export interface JwtPayload {
     exp: number;
 }
 
+/**
+ * Authenticated user object attached to `request.user`.
+ */
 export interface JwtUser {
     userId: string;
     role: string;
     username: string;
 }
 
+/**
+ * Validates bearer tokens and resolves authenticated request user context.
+ */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
+    /**
+     * @param config Runtime configuration provider.
+     * @param redis Redis cache used for token-version reads.
+     * @param db Database service fallback for cache misses.
+     */
     constructor(
         private readonly config: ConfigService,
         private readonly redis: RedisService,

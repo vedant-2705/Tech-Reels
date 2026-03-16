@@ -1,20 +1,25 @@
 /**
- * TypeScript interface for a row from the `users` table.
- *
- * Rules:
- * - This is a plain interface - no ORM decorators, no class-transformer.
- * - Field names match DB column names exactly (snake_case).
- * - Repository methods return this type; service maps it to response DTOs.
- * - password_hash is included here for internal use only -
- *   it is NEVER returned in any response DTO.
+ * @module modules/auth/entities/user.entity
+ * @description
+ * Auth domain entity types and enum-like constant sets representing rows
+ * from the `users` table.
  */
 
+/**
+ * Supported application roles for user accounts.
+ */
 export const USER_ROLES = ["user", "admin"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
+/**
+ * Supported experience levels collected during onboarding and registration.
+ */
 export const EXPERIENCE_LEVELS = ["novice", "intermediate", "advanced"] as const;
 export type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 
+/**
+ * Supported lifecycle states for user accounts.
+ */
 export const ACCOUNT_STATUSES = [
     "active",
     "suspended",
@@ -23,6 +28,9 @@ export const ACCOUNT_STATUSES = [
 ] as const;
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
+/**
+ * Database-backed user entity returned by repository methods.
+ */
 export interface User extends Record<string, unknown> {
     id: string;
     email: string;

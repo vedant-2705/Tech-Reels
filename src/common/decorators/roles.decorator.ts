@@ -1,3 +1,10 @@
+/**
+ * @module common/decorators/roles.decorator
+ * @description
+ * A custom method decorator to specify required user roles for route handlers.
+ * Works in conjunction with RolesGuard to enforce role-based access control.
+ */
+
 import { SetMetadata } from "@nestjs/common";
 
 /**

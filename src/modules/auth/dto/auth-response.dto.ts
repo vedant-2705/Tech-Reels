@@ -1,14 +1,12 @@
 /**
- * Response DTO for:
- *   POST /auth/register        -> 201
- *   POST /auth/login           -> 200
- *   POST /auth/oauth/:provider -> 200 (existing) | 201 (new)
- *
- * Rules:
- * - Plain interface - no class-validator decorators needed on response DTOs.
- * - password_hash is NEVER included here.
- * - needs_onboarding is always false for email registration;
- *   true for new OAuth users who haven't selected topics yet.
+ * @module modules/auth/dto/auth-response.dto
+ * @description
+ * Response DTOs returned by authentication endpoints after successful
+ * registration, login, or OAuth authentication.
+ */
+
+/**
+ * Public user snapshot included in authentication responses.
  */
 export interface AuthUserDto {
     id: string;
@@ -23,6 +21,9 @@ export interface AuthUserDto {
     created_at: string;
 }
 
+/**
+ * Authentication response envelope containing user data and issued tokens.
+ */
 export interface AuthResponseDto {
     user: AuthUserDto;
     access_token: string;

@@ -1,3 +1,10 @@
+/**
+ * @module modules/auth/auth.repository
+ * @description
+ * Data-access layer for auth workflows, combining PostgreSQL persistence and
+ * Redis-backed session, cache, and rate-limit storage.
+ */
+
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { RedisService } from "../../redis/redis.service";
@@ -27,27 +34,26 @@ interface LinkOAuthAccountData {
     provider_user_id: string;
 }
 
-//  Repository 
-
 /**
- * AuthRepository - all DB and Cache access for the Auth module.
- *
- * Rules (from Foundation doc):
- * - Depends only on DatabaseService and RedisService.
- * - NO business logic here - only data access.
- * - Methods return domain types or primitives - never throw AppExceptions.
- * - All SQL uses $1, $2, ... placeholders - never string interpolation.
- * - All queries on users table include: AND deleted_at IS NULL.
- * - Transactions use getClient() with explicit BEGIN/COMMIT/ROLLBACK.
+ * Repository for auth-specific reads and writes against the database and Redis.
  */
 @Injectable()
 export class AuthRepository {
+    /**
+     * @param db PostgreSQL database service.
+     * @param redis Redis service for auth cache and session state.
+     */
     constructor(
         private readonly db: DatabaseService,
         private readonly redis: RedisService,
     ) {}
 
-    //  DB: existence checks 
+    /**
+     * Check whether an active user exists for the given email.
+     *
+     * @param email Email address to check.
+     * @returns true when a non-deleted user exists.
+     */
 
     async existsByEmail(email: string): Promise<boolean> {
         const result = await this.db.query<{ exists: boolean }>(
@@ -60,6 +66,12 @@ export class AuthRepository {
         return result.rows[0]?.exists ?? false;
     }
 
+    /**
+     * Check whether an active user exists for the given username.
+     *
+     * @param username Username to check.
+     * @returns true when a non-deleted user exists.
+     */
     async existsByUsername(username: string): Promise<boolean> {
         const result = await this.db.query<{ exists: boolean }>(
             `SELECT EXISTS(
@@ -71,11 +83,11 @@ export class AuthRepository {
         return result.rows[0]?.exists ?? false;
     }
 
-    //  DB: tag validation 
-
     /**
      * Returns only the IDs that actually exist in the tags table.
-     * Caller compares count against the input array to detect invalid IDs.
+        *
+        * @param tagIds Candidate topic IDs.
+        * @returns Matching tag IDs found in persistence.
      */
     async validateTagIds(tagIds: string[]): Promise<string[]> {
         const result = await this.db.query<{ id: string }>(
@@ -85,11 +97,11 @@ export class AuthRepository {
         return result.rows.map((r) => r.id);
     }
 
-    //  DB: create user (email registration) 
-
     /**
      * Creates the user row and seeds user_topic_affinity in a single transaction.
-     * score = 1.0 per selected topic as per the LLD.
+     *
+     * @param data Registration persistence payload.
+     * @returns Newly created user entity.
      */
     async createUserWithAffinity(
         data: CreateUserWithAffinityData,
@@ -144,7 +156,12 @@ export class AuthRepository {
         }
     }
 
-    //  DB: lookups 
+    /**
+     * Fetch an active user by email address.
+     *
+     * @param email User email.
+     * @returns Matching user or null.
+     */
 
     async findByEmail(email: string): Promise<User | null> {
         const result = await this.db.query<User>(
@@ -160,6 +177,12 @@ export class AuthRepository {
         return result.rows[0] ?? null;
     }
 
+    /**
+     * Fetch an active user by unique identifier.
+     *
+     * @param userId User UUID.
+     * @returns Matching user or null.
+     */
     async findById(userId: string): Promise<User | null> {
         const result = await this.db.query<User>(
             `SELECT
@@ -175,6 +198,13 @@ export class AuthRepository {
         return result.rows[0] ?? null;
     }
 
+    /**
+     * Resolve a user through a linked OAuth provider identity.
+     *
+     * @param provider OAuth provider name.
+     * @param providerUserId Provider-specific user identifier.
+     * @returns Matching linked user or null.
+     */
     async findByOAuthProvider(
         provider: string,
         providerUserId: string,
@@ -191,11 +221,10 @@ export class AuthRepository {
         return result.rows[0] ?? null;
     }
 
-    //  DB: OAuth account linking 
-
     /**
      * Links an OAuth provider identity to an existing user.
-     * ON CONFLICT DO NOTHING - idempotent, safe to call multiple times.
+        *
+        * @param data OAuth account link payload.
      */
     async linkOAuthAccount(data: LinkOAuthAccountData): Promise<void> {
         const id = uuidv7();
@@ -207,11 +236,12 @@ export class AuthRepository {
         );
     }
 
-    //  DB: create OAuth user (new user via OAuth) 
-
     /**
      * Creates a new user with password_hash = NULL and the linked OAuth account
      * in a single transaction.
+        *
+        * @param data OAuth user creation payload.
+        * @returns Newly created user entity.
      */
     async createOAuthUser(data: CreateOAuthUserData): Promise<User> {
         const client = await this.db.getClient();
@@ -253,11 +283,10 @@ export class AuthRepository {
         }
     }
 
-    //  DB + Cache: token version 
-
     /**
      * Increments token_version in DB and evicts the Redis cache entry.
-     * All existing JWTs become invalid within 60s (cache TTL in JwtStrategy).
+        *
+        * @param userId User UUID.
      */
     async incrementTokenVersion(userId: string): Promise<void> {
         await this.db.query(
@@ -271,7 +300,13 @@ export class AuthRepository {
         await this.redis.del(`${AUTH_REDIS_KEYS.TOKEN_VERSION_PREFIX}:${userId}`);
     }
 
-    //  Cache: login rate limiting 
+    /**
+     * Read current failed-login count for an IP/email tuple.
+     *
+     * @param ip Caller IP address.
+     * @param email Login email address.
+     * @returns Failed-attempt count.
+     */
 
     async getLoginAttempts(ip: string, email: string): Promise<number> {
         const value = await this.redis.get(
@@ -280,25 +315,50 @@ export class AuthRepository {
         return value !== null ? parseInt(value, 10) : 0;
     }
 
+    /**
+     * Read remaining TTL for a failed-login counter key.
+     *
+     * @param ip Caller IP address.
+     * @param email Login email address.
+     * @returns TTL in seconds.
+     */
     async getLoginAttemptsTtl(ip: string, email: string): Promise<number> {
         return this.redis.ttl(
             `${AUTH_REDIS_KEYS.LOGIN_ATTEMPTS_PREFIX}:${ip}:${email}`,
         );
     }
 
+    /**
+     * Increment the failed-login counter and apply rate-limit expiry.
+     *
+     * @param ip Caller IP address.
+     * @param email Login email address.
+     */
     async incrementLoginAttempts(ip: string, email: string): Promise<void> {
         const key = `${AUTH_REDIS_KEYS.LOGIN_ATTEMPTS_PREFIX}:${ip}:${email}`;
         await this.redis.incr(key);
         await this.redis.expire(key, AUTH_TTL.LOGIN_WINDOW_SECONDS);
     }
 
+    /**
+     * Clear failed-login tracking after successful authentication.
+     *
+     * @param ip Caller IP address.
+     * @param email Login email address.
+     */
     async clearLoginAttempts(ip: string, email: string): Promise<void> {
         await this.redis.del(
             `${AUTH_REDIS_KEYS.LOGIN_ATTEMPTS_PREFIX}:${ip}:${email}`,
         );
     }
 
-    //  Cache: refresh token management 
+    /**
+     * Persist a hashed refresh token under a token family key.
+     *
+     * @param userId User UUID.
+     * @param tokenFamily Token-family UUID.
+     * @param hash Bcrypt hash of the refresh token.
+     */
 
     async storeRefreshToken(
         userId: string,
@@ -313,6 +373,13 @@ export class AuthRepository {
         );
     }
 
+    /**
+     * Fetch the stored refresh-token hash for a token family.
+     *
+     * @param userId User UUID.
+     * @param tokenFamily Token-family UUID.
+     * @returns Stored hash or null.
+     */
     async getRefreshTokenHash(
         userId: string,
         tokenFamily: string,
@@ -324,7 +391,10 @@ export class AuthRepository {
 
     /**
      * Atomically replaces the stored hash under the same token family.
-     * DEL + SETEX - old token is immediately invalid.
+     *
+     * @param userId User UUID.
+     * @param tokenFamily Token-family UUID.
+     * @param newHash New bcrypt hash for rotated refresh token.
      */
     async rotateRefreshToken(
         userId: string,
@@ -343,7 +413,8 @@ export class AuthRepository {
 
     /**
      * Revokes every session for a user by deleting all refresh:{userId}:* keys.
-     * Used by logout-all and token reuse detection.
+        *
+        * @param userId User UUID.
      */
     async revokeAllSessions(userId: string): Promise<void> {
         await this.redis.deletePattern(
@@ -351,6 +422,12 @@ export class AuthRepository {
         );
     }
 
+    /**
+     * Delete a single stored refresh token family.
+     *
+     * @param userId User UUID.
+     * @param tokenFamily Token-family UUID.
+     */
     async deleteRefreshToken(
         userId: string,
         tokenFamily: string,

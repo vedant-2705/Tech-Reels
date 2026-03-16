@@ -1,4 +1,10 @@
 /**
+ * @module common/utils/pagination.util
+ * @description
+ * Helper for creating cursor-based paginated response envelopes.
+ */
+
+/**
  * Builds a cursor-paginated response envelope.
  *
  * Convention:

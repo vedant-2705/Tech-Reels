@@ -1,9 +1,18 @@
+/**
+ * @module common/utils/hash.util
+ * @description
+ * Password and token hashing helpers built on bcrypt for secure
+ * credential handling and constant-time verification.
+ */
+
 import * as bcrypt from "bcrypt";
 
 /**
  * Hash a plain-text value with bcrypt.
- * @param value   The plain-text string to hash (password, token, etc.)
- * @param rounds  Salt rounds - use 12 for passwords, 10 for refresh tokens
+ *
+ * @param value The plain-text string to hash.
+ * @param rounds Bcrypt salt rounds.
+ * @returns Bcrypt hash output for the provided input value.
  */
 export async function hashValue(
     value: string,
@@ -15,6 +24,10 @@ export async function hashValue(
 /**
  * Compare a plain-text value against a bcrypt hash.
  * Always runs even when the hash is a dummy - prevents timing attacks.
+ *
+ * @param value Plain-text input value.
+ * @param hash Stored bcrypt hash.
+ * @returns true when the value matches the provided hash.
  */
 export async function compareHash(
     value: string,

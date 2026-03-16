@@ -1,3 +1,10 @@
+/**
+ * @module common/pipes/validation.pipe
+ * @description
+ * Shared global ValidationPipe instance that applies strict DTO validation,
+ * payload sanitization, and implicit transformation for request bodies.
+ */
+
 import { ValidationPipe } from "@nestjs/common";
 
 /**
