@@ -3,7 +3,7 @@ import { DatabaseService } from "../../database/database.service";
 import { RedisService } from "../../redis/redis.service";
 import { uuidv7 } from "../../common/utils/uuidv7.util";
 import { ExperienceLevel, User } from "./entities/user.entity";
-import { AUTH_OAUTH, AUTH_REDIS_KEYS, AUTH_TTL, OAuthProvider } from "./auth.constants";
+import { AUTH_REDIS_KEYS, AUTH_TTL, OAuthProvider } from "./auth.constants";
 
 interface CreateUserWithAffinityData {
     email: string;
