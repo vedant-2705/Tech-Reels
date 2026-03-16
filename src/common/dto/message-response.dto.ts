@@ -5,6 +5,9 @@
  * Used across the application for consistent response formatting.
  */
 
-export interface MessageResponseDto {
-    message: string;
+import { ApiProperty } from "@nestjs/swagger";
+
+export class MessageResponseDto {
+    @ApiProperty({ example: "Logged out successfully" })
+    message!: string;
 }
