@@ -35,8 +35,8 @@ import { OAuthService } from "./strategies/oauth.strategy";
                 signOptions: {
                     algorithm: AUTH_JWT.ALGORITHM,
                     expiresIn:
-                        config.get<number>(AUTH_JWT.ACCESS_TTL_ENV) ??
-                        AUTH_TTL.ACCESS_TOKEN_SECONDS,
+                        parseInt(config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ??
+                        AUTH_TTL.ACCESS_TOKEN_SECONDS, 10)
                 },
             }),
         }),

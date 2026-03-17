@@ -51,10 +51,18 @@ export class OAuthService {
         provider: OAuthProvider,
         code: string,
     ): Promise<OAuthProfile> {
-        if (provider === AUTH_OAUTH.PROVIDERS.GOOGLE) {
-            return this.exchangeGoogle(code);
+
+        let safeCode: string;
+        try {
+            safeCode = decodeURIComponent(code);
+        } catch {
+            // Genuinely malformed - pass through and let the provider reject it cleanly
+            safeCode = code;
         }
-        return this.exchangeGithub(code);
+        if (provider === AUTH_OAUTH.PROVIDERS.GOOGLE) {
+            return this.exchangeGoogle(safeCode);
+        }
+        return this.exchangeGithub(safeCode);
     }
 
     /**
@@ -81,7 +89,7 @@ export class OAuthService {
                     client_secret: this.config.get<string>(
                         AUTH_OAUTH.ENV_KEYS.GOOGLE_CLIENT_SECRET,
                     ),
-                    redirect_uri: AUTH_OAUTH.REDIRECT_URI_POSTMESSAGE, // used for mobile/SPA flows
+                    redirect_uri: "http://localhost:3000", // used for mobile/SPA flows
                     grant_type: AUTH_OAUTH.GRANT_TYPE_AUTHORIZATION_CODE,
                 },
                 {

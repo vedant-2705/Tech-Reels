@@ -48,9 +48,9 @@ export const AUTH_ERRORS = {
  * TTL values, in seconds, used by auth session and rate-limit logic.
  */
 export const AUTH_TTL = {
-    REFRESH_TOKEN_SECONDS: 2_592_000, // 30 days
+    REFRESH_TOKEN_SECONDS: '2592000', // 30 days
     LOGIN_WINDOW_SECONDS: 900,        // 15 minutes
-    ACCESS_TOKEN_SECONDS: 900,        // 15 minutes
+    ACCESS_TOKEN_SECONDS: '900',        // 15 minutes
 } as const;
 
 /**

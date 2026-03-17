@@ -333,8 +333,6 @@ export class AuthController {
 
     @Get("me")
     @HttpCode(HttpStatus.OK)
-    @Get("me")
-    @HttpCode(HttpStatus.OK)
     @ApiBearerAuth("access-token")
     @ApiOperation({
         summary: "Get current user profile",

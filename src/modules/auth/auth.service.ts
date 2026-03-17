@@ -372,7 +372,7 @@ export class AuthService {
             { sub: userId, family: tokenFamily },
             {
                 secret: this.config.get<string>(AUTH_JWT.REFRESH_SECRET_ENV),
-                expiresIn: this.config.get<number>(AUTH_JWT.REFRESH_TTL_ENV),
+                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.REFRESH_TTL_ENV) ?? AUTH_TTL.REFRESH_TOKEN_SECONDS, 10),
                 algorithm: AUTH_JWT.REFRESH_ALGORITHM,
             },
         );
@@ -395,7 +395,7 @@ export class AuthService {
             {
                 privateKey: this.config.get<string>(AUTH_JWT.PRIVATE_KEY_ENV),
                 algorithm: AUTH_JWT.ALGORITHM,
-                expiresIn: this.config.get<number>(AUTH_JWT.ACCESS_TTL_ENV),
+                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
             },
         );
 
@@ -403,7 +403,7 @@ export class AuthService {
             access_token: newAccessToken,
             refresh_token: newRefreshToken,
             token_family: tokenFamily,
-            expires_in: AUTH_TTL.ACCESS_TOKEN_SECONDS,
+            expires_in: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
         };
     }
 
@@ -502,7 +502,7 @@ export class AuthService {
             {
                 privateKey: this.config.get<string>(AUTH_JWT.PRIVATE_KEY_ENV),
                 algorithm: AUTH_JWT.ALGORITHM,
-                expiresIn: this.config.get<number>(AUTH_JWT.ACCESS_TTL_ENV),
+                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
             },
         );
 
@@ -515,7 +515,7 @@ export class AuthService {
             {
                 secret: this.config.get<string>(AUTH_JWT.REFRESH_SECRET_ENV),
                 algorithm: AUTH_JWT.REFRESH_ALGORITHM,
-                expiresIn: this.config.get<number>(AUTH_JWT.REFRESH_TTL_ENV),
+                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.REFRESH_TTL_ENV) ?? AUTH_TTL.REFRESH_TOKEN_SECONDS, 10)
             },
         );
 
@@ -588,7 +588,7 @@ export class AuthService {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
             token_family: tokens.token_family,
-            expires_in: AUTH_TTL.ACCESS_TOKEN_SECONDS,
+            expires_in: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
             needs_onboarding: needsOnboarding,
         };
     }

@@ -369,7 +369,7 @@ export class AuthRepository {
         await this.redis.set(
             `${AUTH_REDIS_KEYS.REFRESH_TOKEN_PREFIX}:${userId}:${tokenFamily}`,
             hash,
-            AUTH_TTL.REFRESH_TOKEN_SECONDS,
+            parseInt(AUTH_TTL.REFRESH_TOKEN_SECONDS, 10),
         );
     }
 
@@ -407,7 +407,7 @@ export class AuthRepository {
         await this.redis.set(
             `${AUTH_REDIS_KEYS.REFRESH_TOKEN_PREFIX}:${userId}:${tokenFamily}`,
             newHash,
-            AUTH_TTL.REFRESH_TOKEN_SECONDS,
+            parseInt(AUTH_TTL.REFRESH_TOKEN_SECONDS, 10),
         );
     }
 
