@@ -21,6 +21,7 @@ exports.up = (pgm) => {
 
     CREATE INDEX user_topic_affinity_user_id_idx ON user_topic_affinity (user_id);
     CREATE INDEX user_topic_affinity_tag_id_idx  ON user_topic_affinity (tag_id);
+    CREATE INDEX user_topic_affinity_score_idx   ON user_topic_affinity (user_id, score DESC);
   `);
 };
 

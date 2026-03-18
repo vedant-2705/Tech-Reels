@@ -17,6 +17,7 @@ import { AuthService } from "./auth.service";
 import { AuthRepository } from "./auth.repository";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { OAuthService } from "./strategies/oauth.strategy";
+import { AuthSessionService } from "./auth-session.service";
 
 /**
  * Registers auth runtime dependencies and JWT signing/verification support.
@@ -47,6 +48,10 @@ import { OAuthService } from "./strategies/oauth.strategy";
         // Exported so other modules can verify JWTs or use JwtService if needed
         JwtModule,
         PassportModule,
+
+        // For cross module session lifecycle ops (revocation, token version management)
+        // eg. Users module needs to revoke sessions on password change or account deactivation.
+        AuthSessionService,
     ],
 })
 export class AuthModule {}

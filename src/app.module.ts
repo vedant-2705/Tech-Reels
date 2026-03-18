@@ -16,6 +16,7 @@ import { QueuesModule } from "./queues/queues.module";
 
 // Feature modules
 import { AuthModule } from "./modules/auth/auth.module";
+import { S3Module } from "./s3/s3.module";
 
 @Module({
     imports: [
@@ -54,6 +55,7 @@ import { AuthModule } from "./modules/auth/auth.module";
         DatabaseModule,
         RedisModule,
         QueuesModule,
+        S3Module,
 
         //  Feature modules (add each as built)
         AuthModule,
