@@ -4,19 +4,17 @@
  * Validation exception for one or more topic identifiers that do not exist.
  */
 
-import { AppException } from "./app.exception";
-import { HttpStatus } from "@nestjs/common";
+import { InvalidException } from "./invalid.exception";
 
 /**
  * Thrown when a user attempts to create or update a reel with topic IDs that do not exist in the database.
  */
-export class InvalidTopicsException extends AppException {
+export class InvalidTopicsException extends InvalidException {
     constructor() {
-        super({
-            type: "https://techreel.io/errors/invalid-topics",
-            title: "Invalid Topics",
-            status: HttpStatus.UNPROCESSABLE_ENTITY,
-            detail: "One or more topic IDs do not exist",
-        });
+        super(
+            "https://techreel.io/errors/invalid-topics",
+            "Invalid Topics",
+            "One or more topic IDs do not exist",
+        );
     }
 }

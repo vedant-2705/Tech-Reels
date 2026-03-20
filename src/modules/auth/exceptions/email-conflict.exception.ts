@@ -5,19 +5,17 @@
  * that already belongs to another account.
  */
 
-import { AppException } from "../../../common/exceptions/app.exception";
-import { HttpStatus } from "@nestjs/common";
+import { ConflictException } from "@common/exceptions/conflict.exception";
 
 /**
  * Thrown when a user tries to register with an email that is already in use, or tries to link an email that belongs to another account.
  */
-export class EmailConflictException extends AppException {
+export class EmailConflictException extends ConflictException {
     constructor() {
-        super({
-            type: "https://techreel.io/errors/email-conflict",
-            title: "Email Already Registered",
-            status: HttpStatus.CONFLICT,
-            detail: "An account with this email already exists",
-        });
+        super(
+            "https://techreel.io/errors/email-conflict",
+            "Email Already Registered",
+            "An account with this email already exists",
+        );
     }
 }
