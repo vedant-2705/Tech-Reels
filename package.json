@@ -21,7 +21,8 @@
     "migrate": "node-pg-migrate up --migrations-dir src/database/migrations --config database.json",
     "migrate:down": "node-pg-migrate down --migrations-dir src/database/migrations --config database.json",
     "migrate:create": "node-pg-migrate create --migrations-dir src/database/migrations --config database.json",
-    "generate:keys": "node scripts/generate-keys.js"
+    "generate:keys": "node scripts/generate-keys.js",
+    "seed:admin": "ts-node -r tsconfig-paths/register scripts/seed-admin.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1011.0",

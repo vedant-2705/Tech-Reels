@@ -18,6 +18,7 @@ import { S3Module } from "./s3/s3.module";
 // Feature modules
 import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "@modules/users/users.module";
+import { TagsModule } from "@modules/tags/tags.module";
 
 @Module({
     imports: [
@@ -61,6 +62,7 @@ import { UsersModule } from "@modules/users/users.module";
         //  Feature modules (add each as built)
         AuthModule,
         UsersModule,
+        TagsModule,
     ],
 })
 export class AppModule {}
