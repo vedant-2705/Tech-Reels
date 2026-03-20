@@ -12,7 +12,7 @@ import { ConflictException } from "./conflict.exception";
 export class UsernameConflictException extends ConflictException {
     constructor() {
         super(
-            "https://techreel.io/errors/username-conflict",
+            "username",
             "Username Taken",
             "This username is already in use",
         );

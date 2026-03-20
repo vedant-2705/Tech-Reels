@@ -4,19 +4,17 @@
  * Authentication exception for invalid email/password credentials.
  */
 
-import { AppException } from "./app.exception";
-import { HttpStatus } from "@nestjs/common";
+import { InvalidException } from "./invalid.exception";
 
 /**
  * Thrown when a user attempts to authenticate with incorrect email or password.
  */
-export class InvalidCredentialsException extends AppException {
+export class InvalidCredentialsException extends InvalidException {
     constructor() {
-        super({
-            type: "https://techreel.io/errors/invalid-credentials",
-            title: "Invalid Credentials",
-            status: HttpStatus.UNAUTHORIZED,
-            detail: "Email or password is incorrect",
-        });
+        super(
+            "credentials",
+            "Invalid Credentials",
+            "Email or password is incorrect",
+        );
     }
 }

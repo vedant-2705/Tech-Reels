@@ -12,7 +12,7 @@ import { InvalidException } from "./invalid.exception";
 export class InvalidTopicsException extends InvalidException {
     constructor() {
         super(
-            "https://techreel.io/errors/invalid-topics",
+            "topics",
             "Invalid Topics",
             "One or more topic IDs do not exist",
         );

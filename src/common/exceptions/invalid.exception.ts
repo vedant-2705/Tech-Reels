@@ -18,11 +18,16 @@ import { AppException } from "./app.exception";
 
 export class InvalidException extends AppException {
     /**
-     * @param type   RFC 7807 type URL e.g. 'https://techreel.io/errors/invalid-topics'
+     * @param slug   Resource/error name e.g. 'topics', 'avatar-key'
      * @param title  Short human-readable summary e.g. 'Invalid Topics'
      * @param detail Fuller explanation shown to the client
      */
-    constructor(type: string, title: string, detail: string) {
-        super({ type, title, status: HttpStatus.UNPROCESSABLE_ENTITY, detail });
+    constructor(slug: string, title: string, detail: string) {
+        super({
+            type: `https://techreel.io/errors/invalid-${slug}`,
+            title,
+            status: HttpStatus.UNPROCESSABLE_ENTITY,
+            detail,
+        });
     }
 }

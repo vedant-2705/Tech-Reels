@@ -13,7 +13,7 @@ import { ConflictException } from "@common/exceptions/conflict.exception";
 export class EmailConflictException extends ConflictException {
     constructor() {
         super(
-            "https://techreel.io/errors/email-conflict",
+            "email",
             "Email Already Registered",
             "An account with this email already exists",
         );
