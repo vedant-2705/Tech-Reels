@@ -1,7 +1,7 @@
 /**
  * Migration: 007_create_user_reel_interactions
  *
- * Append-only interaction log — every watch, like, save, share event.
+ * Append-only interaction log - every watch, like, save, share event.
  * Used for: reels watched count, affinity scoring, feed personalisation.
  * Never updated or deleted.
  */

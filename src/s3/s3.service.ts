@@ -7,7 +7,7 @@
  *   - objectExists             - to verify a client actually uploaded before DB update
  *
  * The server never handles file bytes directly. All uploads go
- * client → S3 presigned URL. This service only generates the URL and
+ * client -> S3 presigned URL. This service only generates the URL and
  * verifies the upload completed.
  */
 

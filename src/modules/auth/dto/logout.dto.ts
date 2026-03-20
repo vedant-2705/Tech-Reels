@@ -15,7 +15,7 @@ export class LogoutDto {
         example: '019501a0-0000-7000-8000-000000000001',
         description:
         'The token family UUID of the session to terminate. ' +
-        'Only this session is affected — other active sessions remain valid.',
+        'Only this session is affected - other active sessions remain valid.',
     })
     @IsUUID("7")
     token_family!: string;

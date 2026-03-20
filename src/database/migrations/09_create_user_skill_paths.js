@@ -2,7 +2,7 @@
  * Migration: 09_create_user_skill_paths
  *
  * Tracks user enrolment and progress through skill paths.
- * status: enrolled → in_progress → completed
+ * status: enrolled -> in_progress -> completed
  */
 
 /** @param {import('node-pg-migrate').MigrationBuilder} pgm */

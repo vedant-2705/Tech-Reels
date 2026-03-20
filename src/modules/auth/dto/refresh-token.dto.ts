@@ -16,7 +16,7 @@ export class RefreshTokenDto {
         example: 'eyJhbGciOiJIUzI1NiJ9...',
         description:
         'The refresh token received from the last login, register, or refresh call. ' +
-        'Single-use — this token is immediately invalidated after a successful refresh.',
+        'Single-use - this token is immediately invalidated after a successful refresh.',
     })
     @IsString()
     @IsNotEmpty()

@@ -3,7 +3,7 @@
  *
  * Badge catalogue (admin-managed) and user_badges junction table
  * recording when each user earned each badge.
- * Append-only — badges are never revoked once earned.
+ * Append-only - badges are never revoked once earned.
  */
 
 /** @param {import('node-pg-migrate').MigrationBuilder} pgm */

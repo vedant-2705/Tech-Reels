@@ -20,14 +20,14 @@ export class RefreshResponseDto {
     @ApiProperty({
         example: "eyJhbGciOiJIUzI1NiJ9...",
         description:
-            "New refresh token. The previous refresh token is immediately invalidated — store this one.",
+            "New refresh token. The previous refresh token is immediately invalidated - store this one.",
     })
     refresh_token!: string;
 
     @ApiProperty({
         example: "019501a0-0000-7000-8000-000000000002",
         description:
-            "Same token family UUID as before — family never changes within a session.",
+            "Same token family UUID as before - family never changes within a session.",
     })
     token_family!: string;
 

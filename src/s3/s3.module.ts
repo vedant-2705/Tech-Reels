@@ -2,7 +2,7 @@
  * @module s3/s3.module
  * @description
  * Global module that provides S3Service to the entire application.
- * Import once in AppModule — all feature modules get S3Service automatically.
+ * Import once in AppModule - all feature modules get S3Service automatically.
  */
 
 import { Global, Module } from "@nestjs/common";

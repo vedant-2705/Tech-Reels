@@ -1,7 +1,7 @@
 /**
  * @module modules/users/dto/update-profile.dto
  * @description
- * Request DTO for PATCH /users/me. All fields are optional — send only
+ * Request DTO for PATCH /users/me. All fields are optional - send only
  * what should change. Sending bio: null explicitly clears the field;
  * omitting bio leaves it unchanged.
  */

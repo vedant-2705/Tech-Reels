@@ -17,7 +17,7 @@ import { QUEUES } from "@queues/queue-names";
 
 /**
  * Registers all users-module dependencies.
- * AuthModule is imported to expose AuthSessionService — never AuthRepository.
+ * AuthModule is imported to expose AuthSessionService - never AuthRepository.
  */
 @Module({
     imports: [
