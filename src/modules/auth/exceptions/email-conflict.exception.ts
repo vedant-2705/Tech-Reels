@@ -5,7 +5,7 @@
  * that already belongs to another account.
  */
 
-import { AppException } from "./app.exception";
+import { AppException } from "../../../common/exceptions/app.exception";
 import { HttpStatus } from "@nestjs/common";
 
 /**

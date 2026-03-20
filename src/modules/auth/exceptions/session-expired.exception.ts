@@ -4,7 +4,7 @@
  * Authentication exception for expired or invalid refresh session state.
  */
 
-import { AppException } from "./app.exception";
+import { AppException } from "../../../common/exceptions/app.exception";
 import { HttpStatus } from "@nestjs/common";
 
 /**

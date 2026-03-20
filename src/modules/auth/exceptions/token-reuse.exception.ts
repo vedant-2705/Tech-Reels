@@ -4,7 +4,7 @@
  * Security exception raised when refresh-token replay or reuse is detected.
  */
 
-import { AppException } from "./app.exception";
+import { AppException } from "../../../common/exceptions/app.exception";
 import { HttpStatus } from "@nestjs/common";
 
 /**

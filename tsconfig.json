@@ -40,7 +40,10 @@
       ],
       "@modules/*": [
         "src/modules/*"
-      ]
+      ],
+      "@s3/*": [
+        "src/s3/*"
+      ],
     }
   },
   "include": ["src/**/*"],

@@ -36,6 +36,7 @@ import {
     ApiOperation,
     ApiParam,
     ApiResponse,
+    ApiTags,
 } from "@nestjs/swagger";
 import { ApiErrorDto } from "@common/dto/api-error.dto";
 import { EXPERIENCE_LEVELS } from "./entities/user.entity";
@@ -43,6 +44,8 @@ import { EXPERIENCE_LEVELS } from "./entities/user.entity";
 /**
  * Thin transport layer for auth use cases.
  */
+
+@ApiTags("Auth")
 @Controller("auth")
 export class AuthController {
     /**

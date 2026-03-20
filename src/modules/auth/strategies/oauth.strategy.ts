@@ -8,7 +8,7 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
-import { OAuthFailedException } from "@common/exceptions/oauth-failed.exception";
+import { OAuthFailedException } from "@modules/auth/exceptions/oauth-failed.exception";
 import { AUTH_OAUTH, OAuthProvider } from "../auth.constants";
 
 /**

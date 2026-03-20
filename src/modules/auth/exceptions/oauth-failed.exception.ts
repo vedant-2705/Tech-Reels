@@ -4,7 +4,7 @@
  * Authentication exception for OAuth code exchange or profile retrieval failures.
  */
 
-import { AppException } from "./app.exception";
+import { AppException } from "../../../common/exceptions/app.exception";
 import { HttpStatus } from "@nestjs/common";
 
 /**

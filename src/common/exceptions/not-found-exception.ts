@@ -13,13 +13,14 @@ import { HttpStatus } from "@nestjs/common";
 export class NotFoundException extends AppException {
     /**
      * @param resource The type of resource that was not found, used to generate a specific error message and type URL. Examples: "user", "reel", "comment".
+     * @param detail Optional custom detail message for the exception.
      */
-    constructor(resource: string) {
+    constructor(resource: string, detail?: string) {
         super({
             type: `https://techreel.io/errors/${resource}-not-found`,
             title: "Not Found",
             status: HttpStatus.NOT_FOUND,
-            detail: `The requested ${resource} was not found`,
+            detail: detail ?? `The requested ${resource} was not found`,
         });
     }
 }

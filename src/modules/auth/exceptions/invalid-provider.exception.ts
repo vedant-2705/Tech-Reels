@@ -4,7 +4,7 @@
  * Validation exception for unsupported OAuth providers in auth endpoints.
  */
 
-import { AppException } from "./app.exception";
+import { AppException } from "../../../common/exceptions/app.exception";
 import { HttpStatus } from "@nestjs/common";
 
 /**

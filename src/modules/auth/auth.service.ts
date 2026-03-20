@@ -23,15 +23,15 @@ import { RefreshResponseDto } from "./dto/refresh-response.dto";
 import { MeResponseDto } from "./dto/me-response.dto";
 import { MessageResponseDto } from "@common/dto/message-response.dto";
 
-import { EmailConflictException } from "@common/exceptions/email-conflict.exception";
+import { EmailConflictException } from "@modules/auth/exceptions/email-conflict.exception";
 import { UsernameConflictException } from "@common/exceptions/username-conflict.exception";
 import { InvalidTopicsException } from "@common/exceptions/invalid-topics.exception";
 import { InvalidCredentialsException } from "@common/exceptions/invalid-credentials.exception";
 import { AccountNotActiveException } from "@common/exceptions/account-not-active.exception";
-import { TooManyAttemptsException } from "@common/exceptions/too-many-attempts.exception";
-import { SessionExpiredException } from "@common/exceptions/session-expired.exception";
-import { TokenReuseException } from "@common/exceptions/token-reuse.exception";
-import { InvalidProviderException } from "@common/exceptions/invalid-provider.exception";
+import { TooManyAttemptsException } from "@modules/auth/exceptions/too-many-attempts.exception";
+import { SessionExpiredException } from "@modules/auth/exceptions/session-expired.exception";
+import { TokenReuseException } from "@modules/auth/exceptions/token-reuse.exception";
+import { InvalidProviderException } from "@modules/auth/exceptions/invalid-provider.exception";
 
 import {
     hashValue,

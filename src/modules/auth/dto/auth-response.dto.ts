@@ -27,12 +27,12 @@ export class AuthUserDto {
     })
     avatar_url!: string | null;
 
-    @ApiProperty({ example: "user", enum: ["user", "admin"] })
+    @ApiProperty({ example: "user", enum: USER_ROLES })
     role!: string;
 
     @ApiProperty({
         example: "novice",
-        enum: ["novice", "intermediate", "advanced"],
+        enum: EXPERIENCE_LEVELS,
     })
     experience_level!: string;
 

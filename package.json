@@ -24,6 +24,8 @@
     "generate:keys": "node scripts/generate-keys.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1011.0",
+    "@aws-sdk/s3-request-presigner": "^3.1011.0",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
