@@ -43,7 +43,7 @@ import { AuthSessionService } from "./auth-session.service";
         }),
     ],
     controllers: [AuthController],
-    providers: [AuthService, AuthRepository, JwtStrategy, OAuthService],
+    providers: [AuthService, AuthSessionService, AuthRepository, JwtStrategy, OAuthService],
     exports: [
         // Exported so other modules can verify JWTs or use JwtService if needed
         JwtModule,

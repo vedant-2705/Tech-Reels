@@ -13,10 +13,11 @@ import s3Config from "./config/s3.config";
 import { DatabaseModule } from "./database/database.module";
 import { RedisModule } from "./redis/redis.module";
 import { QueuesModule } from "./queues/queues.module";
+import { S3Module } from "./s3/s3.module";
 
 // Feature modules
 import { AuthModule } from "./modules/auth/auth.module";
-import { S3Module } from "./s3/s3.module";
+import { UsersModule } from "@modules/users/users.module";
 
 @Module({
     imports: [
@@ -59,6 +60,7 @@ import { S3Module } from "./s3/s3.module";
 
         //  Feature modules (add each as built)
         AuthModule,
+        UsersModule,
     ],
 })
 export class AppModule {}

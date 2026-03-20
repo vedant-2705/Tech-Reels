@@ -65,3 +65,12 @@ export const USERS_RATE_LIMITS: UsersRateLimits = {
     PUBLIC_TOKEN: { limit: 5, windowSeconds: 3600, scope: RateLimitScopeEnum.USER },
     PUBLIC_PROFILE: { limit: 30, windowSeconds: 3600, scope: RateLimitScopeEnum.IP },
 } as const;
+
+/**
+ * Account status values for users. Used to gate access to authentication and profile retrieval for deactivated accounts, and to mark accounts as deactivated
+ * when users choose to deactivate.
+ */
+export const USERS_ACCOUNT_STATUSES = {
+    ACTIVE: "active",
+    DEACTIVATED: "deactivated",
+} as const;

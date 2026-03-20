@@ -6,7 +6,7 @@
  * onboarding, avatar upload and confirmation, account deactivation, XP
  * history, badges, gamification stats, and public profile token management.
  *
- * Shape translation is handled by users.mapper.ts — this service focuses
+ * Shape translation is handled by users.mapper.ts - this service focuses
  * purely on orchestration and business rules.
  */
 
@@ -46,9 +46,9 @@ import { ProfileNotFoundException } from "./exceptions/profile-not-found.excepti
 import { InvalidAvatarKeyException } from "./exceptions/invalid-avatar-key.exception";
 
 import { compareHash } from "@common/utils/hash.util";
-import { uuidv7 } from "@common/utils/uuidv7.util";
 import { QUEUES } from "@queues/queue-names";
 import {
+    USERS_ACCOUNT_STATUSES,
     USERS_MESSAGES,
     USERS_MODULE_CONSTANTS,
     USERS_QUEUE_JOBS,
@@ -60,6 +60,10 @@ import {
     toPublicProfileBase,
     toRecruiterBadge,
 } from "./users.mapper";
+
+import { buildAvatarKey } from "./utils/build-avatar-key.util";
+
+const API_URL = process.env.API_URL || "http://localhost:3000";
 
 /**
  * Coordinates all user profile use cases, side effects, and cross-module
@@ -109,7 +113,7 @@ export class UsersService {
     /**
      * Check whether a username is available for the authenticated user to
      * take. Returns available: true when the username is free OR when it
-     * already belongs to the requesting user — so the update form does not
+     * already belongs to the requesting user - so the update form does not
      * show a false conflict on the user's own current username.
      *
      * Intended for real-time UI feedback as the user types (debounced).
@@ -142,9 +146,6 @@ export class UsersService {
         userId: string,
         dto: UpdateProfileDto,
     ): Promise<UpdateProfileResponseDto> {
-        // 1. Username conflict check — fast-path before hitting the DB update.
-        //    Uses existsByUsernameForOtherUser so the user can resubmit their
-        //    own current username without getting a false 409.
         if (dto.username !== undefined) {
             const taken =
                 await this.usersRepository.existsByUsernameForOtherUser(
@@ -156,8 +157,7 @@ export class UsersService {
             }
         }
 
-        // 2. Persist — clearBio = true when dto.bio is explicitly null.
-        //    CASE/WHEN in SQL distinguishes null (clear) from undefined (keep).
+        // Persist - clearBio = true when dto.bio is explicitly null.
         const updated = await this.usersRepository.updateProfile(userId, {
             username: dto.username,
             bio: dto.bio,
@@ -165,7 +165,7 @@ export class UsersService {
             experience_level: dto.experience_level,
         });
 
-        // 3. Side effect: experience_level changed → bust feed cache + rebuild.
+        // experience_level changed -> bust feed cache + rebuild.
         if (dto.experience_level !== undefined) {
             await this.redis.del(
                 `${USERS_REDIS_KEYS.FEED_QUEUE_PREFIX}:${userId}`,
@@ -201,22 +201,20 @@ export class UsersService {
         userId: string,
         dto: CompleteOnboardingDto,
     ): Promise<OnboardingResponseDto> {
-        // 1. Validate all topic IDs exist
         const validIds = await this.usersRepository.validateTagIds(dto.topics);
         if (validIds.length !== dto.topics.length) {
             throw new InvalidTopicsException();
         }
 
-        // 2. Persist experience level
         await this.usersRepository.updateExperienceLevel(
             userId,
             dto.experience_level,
         );
 
-        // 3. Seed topic affinity — idempotent upsert, score = 1.0
+        // Seed topic affinity - idempotent upsert, score = 1.0
         await this.usersRepository.seedTopicAffinity(userId, dto.topics, 1.0);
 
-        // 4. Enqueue feed build — fire and forget
+        // Enqueue feed build - fire and forget
         void this.feedBuildQueue.add(USERS_QUEUE_JOBS.NEW_USER, {
             userId,
             reason: USERS_QUEUE_JOBS.NEW_USER,
@@ -246,13 +244,13 @@ export class UsersService {
         userId: string,
         dto: AvatarUploadDto,
     ): Promise<AvatarUploadResponseDto> {
-        // 1. Derive file extension from MIME type
+        // Derive file extension from MIME type
         const ext = S3Service.extensionFromMimeType(dto.file_type);
 
-        // 2. Build S3 key: avatars/{userId}/{uuidv7()}.{ext}
-        const avatarKey = `avatars/${userId}/${uuidv7()}.${ext}`;
+        // Build S3 key (file path) - includes user ID and a new UUID to avoid collisions
+        const avatarKey = buildAvatarKey(userId, ext);
 
-        // 3. Generate presigned PUT URL — 5 MB max, 300 second expiry
+        // Generate presigned PUT URL - 5 MB max, 300 second expiry
         const { upload_url, expires_at } =
             await this.s3Service.generatePresignedPutUrl({
                 key: avatarKey,
@@ -261,7 +259,7 @@ export class UsersService {
                 expiresIn: 300,
             });
 
-        // 4. Cache pending key with 600-second TTL (longer than presigned URL)
+        // Cache pending with TTL - used for later confirmation step.
         await this.usersRepository.storePendingAvatar(userId, avatarKey);
 
         return { upload_url, avatar_key: avatarKey, expires_at };
@@ -279,19 +277,19 @@ export class UsersService {
         userId: string,
         dto: ConfirmAvatarDto,
     ): Promise<ConfirmAvatarResponseDto> {
-        // 1. Validate pending cache — must exist and match the provided key
+        // Validate pending cache - must exist and match the provided key
         const pendingKey = await this.usersRepository.getPendingAvatar(userId);
         if (!pendingKey || pendingKey !== dto.avatar_key) {
             throw new InvalidAvatarKeyException();
         }
 
-        // 2. Validate object exists in S3
+        // Validate object exists in S3
         const exists = await this.s3Service.objectExists(dto.avatar_key);
         if (!exists) {
             throw new InvalidAvatarKeyException();
         }
 
-        // 3. Build CDN URL, persist, clean up cache
+        // Build CDN URL, persist, clean up cache
         const avatar_url = this.s3Service.getCdnUrl(dto.avatar_key);
         await this.usersRepository.updateAvatarUrl(userId, avatar_url);
         await this.usersRepository.deletePendingAvatar(userId);
@@ -316,13 +314,12 @@ export class UsersService {
         userId: string,
         dto: DeactivateDto,
     ): Promise<MessageResponseDto> {
-        // 1. Load user
         const user = await this.usersRepository.findById(userId);
         if (!user) {
             throw new UnauthorizedException();
         }
 
-        // 2. Password check — only for accounts that have a password set
+        // Password check - only for accounts that have a password set
         if (user.password_hash !== null) {
             const passwordValid = await compareHash(
                 dto.password ?? "",
@@ -333,15 +330,13 @@ export class UsersService {
             }
         }
 
-        // 3. Mark account as deactivated
-        await this.usersRepository.setAccountStatus(userId, "deactivated");
+        await this.usersRepository.setAccountStatus(userId, USERS_ACCOUNT_STATUSES.DEACTIVATED);
 
-        // 4 & 5. Revoke all sessions and invalidate existing JWTs.
-        //        Uses AuthSessionService — never AuthRepository directly.
+        // Revoke all sessions and invalidate existing JWTs.
         await this.authSessionService.revokeAllSessions(userId);
         await this.authSessionService.incrementTokenVersion(userId);
 
-        // 6. Publish ACCOUNT_DEACTIVATED to transactional Pub/Sub channel
+        // Publish ACCOUNT_DEACTIVATED to transactional Pub/Sub channel
         void this.redis.publish(
             USERS_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
             JSON.stringify({
@@ -475,7 +470,7 @@ export class UsersService {
         await this.usersRepository.setPublicProfileToken(userId, token);
         return {
             public_profile_token: token,
-            public_profile_url: `https://techreel.io/profile/${token}`,
+            public_profile_url: `${API_URL}/profile/${token}`,
         };
     }
 
@@ -506,7 +501,7 @@ export class UsersService {
         username: string,
     ): Promise<PublicProfileResponseDto> {
         const user = await this.usersRepository.findByUsername(username);
-        if (!user || user.account_status !== "active") {
+        if (!user || user.account_status !== USERS_ACCOUNT_STATUSES.ACTIVE) {
             throw new UserNotFoundException();
         }
 
@@ -530,7 +525,7 @@ export class UsersService {
      */
     async getProfileByToken(token: string): Promise<PublicProfileResponseDto> {
         const user = await this.usersRepository.findByPublicProfileToken(token);
-        if (!user || user.account_status !== "active") {
+        if (!user || user.account_status !== USERS_ACCOUNT_STATUSES.ACTIVE) {
             throw new ProfileNotFoundException();
         }
 
