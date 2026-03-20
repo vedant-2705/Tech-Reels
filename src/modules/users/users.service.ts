@@ -62,8 +62,7 @@ import {
 } from "./users.mapper";
 
 import { buildAvatarKey } from "./utils/build-avatar-key.util";
-
-const API_URL = process.env.API_URL || "http://localhost:3000";
+import { ConfigService } from "@nestjs/config";
 
 /**
  * Coordinates all user profile use cases, side effects, and cross-module
@@ -85,6 +84,7 @@ export class UsersService {
         private readonly redis: RedisService,
         @InjectQueue(QUEUES.FEED_BUILD)
         private readonly feedBuildQueue: Queue,
+        private readonly config: ConfigService,
     ) {}
 
     // -----------------------------------------------------------------------
@@ -466,11 +466,12 @@ export class UsersService {
     async generatePublicToken(
         userId: string,
     ): Promise<{ public_profile_token: string; public_profile_url: string }> {
+        const baseUrl = this.config.get<string>('API_BASE_URL') ?? 'http://localhost:3000';
         const token = crypto.randomBytes(32).toString("hex");
         await this.usersRepository.setPublicProfileToken(userId, token);
         return {
             public_profile_token: token,
-            public_profile_url: `${API_URL}/profile/${token}`,
+            public_profile_url: `${baseUrl}/profile/${token}`,
         };
     }
 

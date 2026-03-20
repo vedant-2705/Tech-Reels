@@ -6,7 +6,7 @@
  * never revealed to unauthenticated callers.
  */
 
-import { NotFoundException } from '@common/exceptions/not-found-exception';
+import { NotFoundException } from '@common/exceptions/not-found.exception';
 
 /**
  * Raised when a user cannot be found by username, or their account is

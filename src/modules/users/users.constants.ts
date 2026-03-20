@@ -43,27 +43,13 @@ export const USERS_MODULE_CONSTANTS = {
  * Rate-limit configurations for users endpoints.
  * Applied via @SetRateLimit() + @UseGuards(RateLimitGuard).
  */
-
-export enum RateLimitScopeEnum {
-    USER = "user",
-    IP = "ip"
-}
-
-export interface RateLimitConfig {
-    limit: number;
-    windowSeconds: number;
-    scope: RateLimitScopeEnum;
-}
-
-export type UsersRateLimits = Record<string, RateLimitConfig>;
-
-export const USERS_RATE_LIMITS: UsersRateLimits = {
-    PROFILE_UPDATE: { limit: 10, windowSeconds: 3600, scope: RateLimitScopeEnum.USER },
-    ONBOARDING: { limit: 5, windowSeconds: 3600, scope: RateLimitScopeEnum.USER },
-    AVATAR: { limit: 5, windowSeconds: 3600, scope: RateLimitScopeEnum.USER },
-    DEACTIVATE: { limit: 3, windowSeconds: 3600, scope: RateLimitScopeEnum.USER },
-    PUBLIC_TOKEN: { limit: 5, windowSeconds: 3600, scope: RateLimitScopeEnum.USER },
-    PUBLIC_PROFILE: { limit: 30, windowSeconds: 3600, scope: RateLimitScopeEnum.IP },
+export const USERS_RATE_LIMITS = {
+    PROFILE_UPDATE: { limit: 10, windowSeconds: 3600, scope: 'user' as const },
+    ONBOARDING: { limit: 5, windowSeconds: 3600, scope: 'user' as const },
+    AVATAR: { limit: 5, windowSeconds: 3600, scope: 'user' as const },
+    DEACTIVATE: { limit: 3, windowSeconds: 3600, scope: 'user' as const },
+    PUBLIC_TOKEN: { limit: 5, windowSeconds: 3600, scope: 'user' as const },
+    PUBLIC_PROFILE: { limit: 30, windowSeconds: 3600, scope: 'ip' as const },
 } as const;
 
 /**

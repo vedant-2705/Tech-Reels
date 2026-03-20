@@ -6,7 +6,7 @@
  * revealed to unauthenticated callers.
  */
 
-import { NotFoundException } from '@common/exceptions/not-found-exception';
+import { NotFoundException } from '@common/exceptions/not-found.exception';
 
 /**
  * Raised when a public profile token resolves to no user, or the
