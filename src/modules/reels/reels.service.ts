@@ -69,6 +69,8 @@ import { InvalidReelTagsException } from "./exceptions/invalid-reel-tags.excepti
 import { TAGS_REDIS_KEYS } from "@modules/tags/tags.constants";
 import { MessageResponseDto } from "@common/dto/message-response.dto";
 import { UploadInProgressException } from "./exceptions/upload-in-progress.exception";
+import { uuidv7 } from "@common/utils/uuidv7.util";
+import { buildReelUploadKey } from "./utils/build-reel-upload-key.util";
 
 /**
  * Orchestrates all Reels workflows, side effects, and cache management.
@@ -130,18 +132,11 @@ export class ReelsService {
                 throw new InvalidReelTagsException();
             }
 
-            // Create reel row (status = uploading)
-            const reel = await this.reelsRepository.create({
-                creatorId: userId,
-                title: dto.title,
-                description: dto.description,
-                difficulty: dto.difficulty,
-            });
-
             // Derive S3 key and generate presigned PUT URL.
             // bucket is the second arg to generatePresignedPutUrl - not part of PresignedPutUrlOptions.
             // generatePresignedPutUrl returns { upload_url, expires_at } - destructure directly.
-            const rawKey = `reels/${reel.id}/raw.mp4`;
+            const reelId = uuidv7();
+            const rawKey = buildReelUploadKey(userId, reelId);
             const rawBucket =
                 this.config.get<string>(REELS_S3_ENV.RAW_BUCKET) ?? "";
 
@@ -156,19 +151,17 @@ export class ReelsService {
                     rawBucket,
                 );
 
-            // Insert reel-tag associations
-            await this.reelsRepository.insertReelTags(reel.id, dto.tag_ids);
+            // Store full draft in Redis - DB write deferred until confirm
+            await this.reelsRepository.setDraft(reelId, {
+                creatorId: userId,
+                title: dto.title,
+                description: dto.description,
+                difficulty: dto.difficulty,
+                tagIds: dto.tag_ids,
+                rawKey,
+            });
 
-            // Store pending key in cache (TTL 1800s) for confirm validation
-            await this.reelsRepository.setPendingReel(reel.id, rawKey);
-
-            // expires_at comes from S3Service - no need to re-compute
-            return {
-                reel_id: reel.id,
-                upload_url,
-                raw_key: rawKey,
-                expires_at,
-            };
+            return { reel_id: reelId, upload_url, raw_key: rawKey, expires_at };
         } finally {
             // Always release the lock - even if validation or S3 call throws
             await this.redis.del(lockKey);
@@ -190,25 +183,19 @@ export class ReelsService {
         reelId: string,
         dto: ConfirmReelDto,
     ): Promise<{ reel_id: string; status: string; message: string }> {
-        // Verify reel exists and belongs to caller
-        const reel = await this.reelsRepository.findById(reelId);
-        if (!reel || reel.creator_id !== userId) {
+        // Read draft from Redis - null means expired or already confirmed
+        const draft = await this.reelsRepository.getDraft(reelId);
+        if (!draft) {
+            throw new InvalidReelKeyException();
+        }
+
+        // Verify ownership - draft must belong to the calling user
+        if (draft.creatorId !== userId) {
             throw new ReelNotFoundException();
         }
 
-        // Idempotency gate - if already processing or beyond, return current state
-        // without re-queuing a second MediaConvert job
-        if (reel.status !== REEL_STATUS.UPLOADING) {
-            return {
-                reel_id: reelId,
-                status: reel.status,
-                message: REELS_MESSAGES.CONFIRM,
-            };
-        }
-
-        // Validate pending key from cache
-        const pendingKey = await this.reelsRepository.getPendingReel(reelId);
-        if (!pendingKey || pendingKey !== dto.raw_key) {
+        // Verify raw_key matches what was issued at create time
+        if (draft.rawKey !== dto.raw_key) {
             throw new InvalidReelKeyException();
         }
 
@@ -223,11 +210,18 @@ export class ReelsService {
             throw new InvalidReelKeyException();
         }
 
-        // Update reel status -> processing
-        await this.reelsRepository.setProcessing(reelId);
+        // Write reel row + tag associations in a single DB transaction
+        await this.reelsRepository.createWithTags({
+            id: reelId,
+            creatorId: draft.creatorId,
+            title: draft.title,
+            description: draft.description,
+            difficulty: draft.difficulty,
+            tagIds: draft.tagIds,
+        });
 
-        // Clear pending cache key
-        await this.reelsRepository.deletePendingReel(reelId);
+        // Delete draft - upload is now committed to DB
+        await this.reelsRepository.deleteDraft(reelId);
 
         // Enqueue video processing job
         void this.videoProcessingQueue.add(REELS_QUEUE_JOBS.VIDEO_PROCESS, {

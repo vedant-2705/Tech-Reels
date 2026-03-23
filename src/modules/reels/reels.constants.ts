@@ -12,8 +12,8 @@
 export const REELS_REDIS_KEYS = {
     /** Hash: full reel metadata. TTL 300s. */
     META_PREFIX: "reel:meta",
-    /** String: pending raw S3 key awaiting confirm. TTL 1800s. */
-    PENDING_PREFIX: "reel:pending",
+    /** Hash: reel draft metadata before upload is confirmed. TTL matches presigned URL window. */
+    DRAFT_PREFIX: 'reel:draft',
     /** Set: active reel IDs per tag. No TTL - permanent. */
     TAG_SET_PREFIX: "reel_tags:tag",
     /** Bloom filter: watched reel IDs per user. TTL 30 days. */
@@ -28,8 +28,8 @@ export const REELS_REDIS_KEYS = {
 export const REELS_CACHE_TTL = {
     /** reel:meta:{reelId} hash - 5 minutes */
     META: 300,
-    /** reel:pending:{reelId} string - 30 minutes */
-    PENDING: 1800,
+    /** reel:draft:{reelId} - 30 minutes. Matches presigned URL expiry window. */
+    DRAFT: 1800,
     /** feed:{userId} list - 30 minutes */
     FEED: 1800,
     /** watched:{userId} bloom filter - 30 days */

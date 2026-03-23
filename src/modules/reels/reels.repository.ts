@@ -36,6 +36,26 @@ interface CreateReelData {
     difficulty: ReelDifficulty;
 }
 
+/** Shape passed to createWithTags — full reel creation payload including tags. */
+interface CreateReelWithTagsData {
+    id: string;
+    creatorId: string;
+    title: string;
+    description?: string;
+    difficulty: ReelDifficulty;
+    tagIds: string[];
+}
+
+/** Shape stored in / retrieved from the reel:draft:{reelId} Redis Hash. */
+interface ReelDraft {
+    creatorId: string;
+    title: string;
+    description?: string;
+    difficulty: ReelDifficulty;
+    tagIds: string[]; // JSON-encoded string[]
+    rawKey: string;
+}
+
 /** Shape passed to repository update method. */
 interface UpdateReelData {
     title?: string;
@@ -291,36 +311,63 @@ export class ReelsRepository {
     // DB - Write methods
 
     /**
-     * Insert a new reel row with status=uploading.
+     * Insert a reel row and its tag associations in a single transaction.
+     * Called by confirmReel after the S3 upload is verified.
+     * Status is set to processing immediately — no intermediate uploading state
+     * since the DB row is only created once the upload is confirmed.
      *
-     * @param data Reel creation payload.
-     * @returns Newly created Reel entity (without joined fields - creator/tags must be fetched separately).
+     * @param data Full reel creation payload including tag IDs.
+     * @returns Newly created Reel entity with joined creator and tags.
      */
-    async create(data: CreateReelData): Promise<Reel> {
-        const id = uuidv7();
+    async createWithTags(data: CreateReelWithTagsData): Promise<Reel> {
+        const client = await this.db.getClient();
         const now = new Date().toISOString();
 
-        const result = await this.db.query<Reel>(
-            `INSERT INTO reels (
-         id, creator_id, title, description, difficulty,
-         status, view_count, like_count, save_count, share_count,
-         created_at, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5,
-         'uploading', 0, 0, 0, 0,
-         $6, $6
-       ) RETURNING *`,
-            [
-                id,
-                data.creatorId,
-                data.title,
-                data.description ?? null,
-                data.difficulty,
-                now,
-            ],
-        );
+        try {
+            await client.query("BEGIN");
 
-        return result.rows[0];
+            await client.query(
+                `INSERT INTO reels (
+                id, creator_id, title, description, difficulty,
+                status, view_count, like_count, save_count, share_count,
+                created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5,
+                'processing', 0, 0, 0, 0,
+                $6, $6
+            )`,
+                [
+                    data.id,
+                    data.creatorId,
+                    data.title,
+                    data.description ?? null,
+                    data.difficulty,
+                    now,
+                ],
+            );
+
+            if (data.tagIds.length > 0) {
+                const values = data.tagIds
+                    .map((_, i) => `($1, $${i + 2})`)
+                    .join(", ");
+                await client.query(
+                    `INSERT INTO reel_tags (reel_id, tag_id)
+                 VALUES ${values}
+                 ON CONFLICT DO NOTHING`,
+                    [data.id, ...data.tagIds],
+                );
+            }
+
+            await client.query("COMMIT");
+        } catch (err) {
+            await client.query("ROLLBACK");
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        // Re-fetch with full joins so caller gets creator + tags in the response
+        return (await this.findById(data.id))!;
     }
 
     /**
@@ -688,39 +735,61 @@ export class ReelsRepository {
         await this.redis.del(`${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`);
     }
 
-    // Cache - reel:pending:{reelId} String
+    // Cache — reel:draft:{reelId} Hash
 
     /**
-     * Store the raw S3 key for a pending upload. TTL 1800s.
+     * Persist all reel metadata as a Redis Hash draft before the upload is confirmed.
+     * No DB writes happen until confirmReel succeeds.
+     * TTL matches the presigned URL window — draft auto-expires with the URL.
      *
-     * @param reelId Reel UUID.
-     * @param rawKey S3 object key.
+     * @param reelId Reel UUID (generated client-side before any DB row exists).
+     * @param draft  Full draft payload to store.
      */
-    async setPendingReel(reelId: string, rawKey: string): Promise<void> {
-        await this.redis.set(
-            `${REELS_REDIS_KEYS.PENDING_PREFIX}:${reelId}`,
-            rawKey,
-            REELS_CACHE_TTL.PENDING,
-        );
+    async setDraft(
+        reelId: string,
+        draft: ReelDraft,
+    ): Promise<void> {
+        const key = `${REELS_REDIS_KEYS.DRAFT_PREFIX}:${reelId}`;
+        await this.redis.hset(key, {
+            creatorId: draft.creatorId,
+            title: draft.title,
+            description: draft.description ?? "",
+            difficulty: draft.difficulty,
+            tagIds: JSON.stringify(draft.tagIds),
+            rawKey: draft.rawKey,
+        });
+        await this.redis.expire(key, REELS_CACHE_TTL.DRAFT);
     }
 
     /**
-     * Retrieve the pending raw S3 key for a reel.
+     * Retrieve a pending upload draft from Redis.
+     * Returns null when the draft has expired or never existed.
      *
      * @param reelId Reel UUID.
-     * @returns Raw S3 key or null if expired/missing.
+     * @returns Parsed draft object or null on cache miss.
      */
-    async getPendingReel(reelId: string): Promise<string | null> {
-        return this.redis.get(`${REELS_REDIS_KEYS.PENDING_PREFIX}:${reelId}`);
+    async getDraft(reelId: string): Promise<ReelDraft | null> {
+        const key = `${REELS_REDIS_KEYS.DRAFT_PREFIX}:${reelId}`;
+        const data = await this.redis.hgetall(key);
+        if (!data || Object.keys(data).length === 0) return null;
+
+        return {
+            creatorId: data.creatorId,
+            title: data.title,
+            description: data.description || undefined,
+            difficulty: data.difficulty as ReelDifficulty,
+            tagIds: JSON.parse(data.tagIds ?? "[]") as string[],
+            rawKey: data.rawKey,
+        };
     }
 
     /**
-     * Delete the pending reel key after a successful confirm.
+     * Delete the draft after a successful confirm.
      *
      * @param reelId Reel UUID.
      */
-    async deletePendingReel(reelId: string): Promise<void> {
-        await this.redis.del(`${REELS_REDIS_KEYS.PENDING_PREFIX}:${reelId}`);
+    async deleteDraft(reelId: string): Promise<void> {
+        await this.redis.del(`${REELS_REDIS_KEYS.DRAFT_PREFIX}:${reelId}`);
     }
 
     // Cache - reel_tags:tag:{tagId} Set
