@@ -19,6 +19,7 @@ import { S3Module } from "./s3/s3.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "@modules/users/users.module";
 import { TagsModule } from "@modules/tags/tags.module";
+import { ReelsModule } from "@modules/reels/reels.module";
 
 @Module({
     imports: [
@@ -63,6 +64,7 @@ import { TagsModule } from "@modules/tags/tags.module";
         AuthModule,
         UsersModule,
         TagsModule,
+        ReelsModule,
     ],
 })
 export class AppModule {}

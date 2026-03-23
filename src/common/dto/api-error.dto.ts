@@ -15,21 +15,21 @@ import { ApiProperty } from "@nestjs/swagger";
  */
 export class ApiErrorDto {
     @ApiProperty({
-        example: "https://techreel.io/errors/invalid-credentials",
+        example: "https://techreel.io/errors/<error-code>",
         description: "Unique error type URI.",
     })
     type!: string;
 
-    @ApiProperty({ example: "Invalid Credentials" })
+    @ApiProperty({ example: "<Error Code>" })
     title!: string;
 
-    @ApiProperty({ example: 401 })
+    @ApiProperty({ example: "<http-status-code>" })
     status!: number;
 
-    @ApiProperty({ example: "Email or password is incorrect." })
+    @ApiProperty({ example: "<Error Detail>" })
     detail!: string;
 
-    @ApiProperty({ example: "/api/v1/auth/login" })
+    @ApiProperty({ example: "/api/v1/<endpoint>" })
     instance!: string;
 
     @ApiProperty({ example: "2026-03-16T10:00:00.000Z" })

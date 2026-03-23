@@ -40,6 +40,11 @@ export class RedisService implements OnModuleDestroy {
         }
     }
 
+    async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+        const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+        return result === 'OK';
+    }
+
     async del(...keys: string[]): Promise<void> {
         if (keys.length > 0) await this.client.del(...keys);
     }
@@ -79,6 +84,20 @@ export class RedisService implements OnModuleDestroy {
         return Object.keys(result).length > 0 ? result : null;
     }
 
+    async hincrby(key: string, field: string, increment: number): Promise<void> {
+        await this.client.hincrby(key, field, increment);
+    }
+
+    //  Set operations
+ 
+    async sadd(key: string, ...members: string[]): Promise<void> {
+        await this.client.sadd(key, ...members);
+    }
+ 
+    async srem(key: string, ...members: string[]): Promise<void> {
+        await this.client.srem(key, ...members);
+    }
+
     //  List operations
 
     async lpop(key: string, count?: number): Promise<string[]> {
@@ -91,6 +110,10 @@ export class RedisService implements OnModuleDestroy {
 
     async rpush(key: string, ...values: string[]): Promise<void> {
         await this.client.rpush(key, ...values);
+    }
+
+    async lrange(key: string, start: number, stop: number): Promise<string[]> {
+        return this.client.lrange(key, start, stop);
     }
 
     async llen(key: string): Promise<number> {
