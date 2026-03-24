@@ -25,18 +25,9 @@ import {
     REELS_REDIS_KEYS,
     ReelStatus,
     ReelDifficulty,
-    REEL_STATUS,
 } from "./reels.constants";
 
-/** Shape passed to repository create method. */
-interface CreateReelData {
-    creatorId: string;
-    title: string;
-    description?: string;
-    difficulty: ReelDifficulty;
-}
-
-/** Shape passed to createWithTags — full reel creation payload including tags. */
+/** Shape passed to createWithTags - full reel creation payload including tags. */
 interface CreateReelWithTagsData {
     id: string;
     creatorId: string;
@@ -186,7 +177,7 @@ export class ReelsRepository {
     async findActive(limit: number, cursor?: string): Promise<Reel[]> {
         const params: unknown[] = [limit];
         const conditions: string[] = [
-            `r.status = ${REEL_STATUS.ACTIVE}`,
+            `r.status = 'active'`,
             "r.deleted_at IS NULL",
         ];
 
@@ -313,7 +304,7 @@ export class ReelsRepository {
     /**
      * Insert a reel row and its tag associations in a single transaction.
      * Called by confirmReel after the S3 upload is verified.
-     * Status is set to processing immediately — no intermediate uploading state
+     * Status is set to processing immediately - no intermediate uploading state
      * since the DB row is only created once the upload is confirmed.
      *
      * @param data Full reel creation payload including tag IDs.
@@ -426,7 +417,7 @@ export class ReelsRepository {
      */
     async setProcessing(id: string): Promise<void> {
         await this.db.query(
-            `UPDATE reels SET status = ${REEL_STATUS.PROCESSING}, updated_at = now() WHERE id = $1`,
+            `UPDATE reels SET status = 'processing', updated_at = now() WHERE id = $1`,
             [id],
         );
     }
@@ -439,7 +430,7 @@ export class ReelsRepository {
     async softDelete(id: string): Promise<void> {
         await this.db.query(
             `UPDATE reels
-       SET status = ${REEL_STATUS.DELETED}, deleted_at = now(), updated_at = now()
+       SET status = 'deleted', deleted_at = now(), updated_at = now()
        WHERE id = $1`,
             [id],
         );
@@ -735,12 +726,12 @@ export class ReelsRepository {
         await this.redis.del(`${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`);
     }
 
-    // Cache — reel:draft:{reelId} Hash
+    // Cache - reel:draft:{reelId} Hash
 
     /**
      * Persist all reel metadata as a Redis Hash draft before the upload is confirmed.
      * No DB writes happen until confirmReel succeeds.
-     * TTL matches the presigned URL window — draft auto-expires with the URL.
+     * TTL matches the presigned URL window - draft auto-expires with the URL.
      *
      * @param reelId Reel UUID (generated client-side before any DB row exists).
      * @param draft  Full draft payload to store.

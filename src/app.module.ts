@@ -20,6 +20,7 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "@modules/users/users.module";
 import { TagsModule } from "@modules/tags/tags.module";
 import { ReelsModule } from "@modules/reels/reels.module";
+import { MediaModule } from "@modules/media/media.module";
 
 @Module({
     imports: [
@@ -65,6 +66,7 @@ import { ReelsModule } from "@modules/reels/reels.module";
         UsersModule,
         TagsModule,
         ReelsModule,
+        MediaModule,
     ],
 })
 export class AppModule {}

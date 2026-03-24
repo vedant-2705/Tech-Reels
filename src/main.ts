@@ -8,7 +8,9 @@ import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
 
 async function bootstrap(): Promise<void> {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, {
+        rawBody: true, // required for POST /media/webhook HMAC validation
+    });
 
     //  Global API prefix
     app.setGlobalPrefix("api/v1");

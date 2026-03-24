@@ -11,7 +11,7 @@
 import { ConflictException } from "@common/exceptions/conflict.exception";
 
 /**
- * 409 Conflict — an upload is already in progress for this user.
+ * 409 Conflict - an upload is already in progress for this user.
  *
  * The client should inform the user that their previous upload is still being
  * prepared and they should wait before starting a new one.
