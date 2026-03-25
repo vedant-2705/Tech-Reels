@@ -52,6 +52,7 @@ import {
     CHALLENGE_OPTIONS_COUNT,
     CHALLENGE_XP_REWARD,
     CHALLENGE_MAX_PER_REEL,
+    ChallengeType,
 } from "./challenges.constants";
 
 import { QUEUES } from "@queues/queue-names";
@@ -590,7 +591,7 @@ export class ChallengesService {
         }
 
         // Read denormalised total_xp (always returned, correct or not)
-        const new_total_xp = await this.challengesRepository.getTotalXp(userId);
+        const new_total_xp = await this.challengesRepository.getTotalXp(userId) + xp_awarded;
 
         const attempts_left = is_correct
             ? 0
@@ -706,7 +707,7 @@ export class ChallengesService {
         correctAnswer: string | number,
     ): void {
         const requiresOptions = CHALLENGE_TYPES_REQUIRING_OPTIONS.has(
-            type as any,
+            type as ChallengeType,
         );
 
         if (requiresOptions) {
