@@ -21,6 +21,7 @@ import { UsersModule } from "@modules/users/users.module";
 import { TagsModule } from "@modules/tags/tags.module";
 import { ReelsModule } from "@modules/reels/reels.module";
 import { MediaModule } from "@modules/media/media.module";
+import { ChallengesModule } from "@modules/challenges/challenges.module";
 
 @Module({
     imports: [
@@ -67,6 +68,7 @@ import { MediaModule } from "@modules/media/media.module";
         TagsModule,
         ReelsModule,
         MediaModule,
+        ChallengesModule,
     ],
 })
 export class AppModule {}

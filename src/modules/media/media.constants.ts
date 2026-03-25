@@ -80,10 +80,10 @@ export const MEDIA_ENV = {
     /** 64-char hex secret shared between this API and the webhook Lambda. */
     WEBHOOK_SECRET: "WEBHOOK_SECRET",
 
-    /** Private S3 bucket — creator uploads raw video here via presigned URL. */
+    /** Private S3 bucket - creator uploads raw video here via presigned URL. */
     RAW_BUCKET: "S3_RAW_BUCKET",
 
-    /** Public CDN S3 bucket — MediaConvert writes HLS segments and thumbnail here. */
+    /** Public CDN S3 bucket - MediaConvert writes HLS segments and thumbnail here. */
     CDN_BUCKET: "S3_CDN_BUCKET",
 } as const;
 

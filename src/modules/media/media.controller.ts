@@ -45,7 +45,7 @@ class WebhookReceivedResponseDto {
 }
 
 /**
- * Internal webhook endpoint for AWS EventBridge → Lambda → API bridge.
+ * Internal webhook endpoint for AWS EventBridge -> Lambda -> API bridge.
  * No user-facing routes exist in this module.
  */
 @ApiTags("Media")
