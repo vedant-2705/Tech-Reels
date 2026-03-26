@@ -9,7 +9,7 @@
  * Pattern rules (mirrors existing codebase):
  *   - DB methods:    pure SQL - query DB, return domain types or null, no cache ops.
  *   - Cache methods: pure Redis - get/set/del, no DB calls.
- *   - Service owns cache-aside orchestration (check cache → miss → DB → set cache).
+ *   - Service owns cache-aside orchestration (check cache -> miss -> DB -> set cache).
  *
  * Repository methods return domain types or null - never throw AppExceptions.
  * All SQL uses parameterised queries - never string concatenation.

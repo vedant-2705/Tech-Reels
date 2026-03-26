@@ -18,6 +18,8 @@ import { QUEUES } from "./queue-names";
         BullModule.registerQueue({ name: QUEUES.NOTIFICATION }),
         BullModule.registerQueue({ name: QUEUES.REPORT_EVALUATION }),
         BullModule.registerQueue({ name: QUEUES.FEED_BUILD }),
+        BullModule.registerQueue({ name: QUEUES.STREAK_RESET }),
+        BullModule.registerQueue({ name: QUEUES.LEADERBOARD_RESET }),
     ],
     exports: [BullModule],
 })

@@ -12,6 +12,7 @@ import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
 import { User } from "@modules/auth/entities/user.entity";
 import { USERS_REDIS_KEYS } from "./users.constants";
+import { LEADERBOARD_WEEKLY_KEY_PREFIX, TOP_TAGS_KEY_PREFIX } from "@common/constants/redis-keys.constants";
 
 // ---------------------------------------------------------------------------
 // Local domain types returned by repository methods
@@ -512,7 +513,7 @@ export class UsersRepository {
      * @returns 0-based rank integer, or null if not ranked or no top tag.
      */
     async getLeaderboardRank(userId: string): Promise<number | null> {
-        const topTagsRaw = await this.redis.get(`top_tags:${userId}`);
+        const topTagsRaw = await this.redis.get(`${TOP_TAGS_KEY_PREFIX}:${userId}`);
         if (!topTagsRaw) return null;
 
         // topTagsRaw is expected to be a JSON array of tag IDs ordered by score
@@ -527,7 +528,7 @@ export class UsersRepository {
         if (!topTagId) return null;
 
         const rank = await this.redis.zrevrank(
-            `leaderboard:weekly:${topTagId}`,
+            `${LEADERBOARD_WEEKLY_KEY_PREFIX}:${topTagId}`,
             userId,
         );
 

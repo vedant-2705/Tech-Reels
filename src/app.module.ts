@@ -22,6 +22,7 @@ import { TagsModule } from "@modules/tags/tags.module";
 import { ReelsModule } from "@modules/reels/reels.module";
 import { MediaModule } from "@modules/media/media.module";
 import { ChallengesModule } from "@modules/challenges/challenges.module";
+import { GamificationModule } from "@modules/gamification/gamification.module";
 
 @Module({
     imports: [
@@ -69,6 +70,7 @@ import { ChallengesModule } from "@modules/challenges/challenges.module";
         ReelsModule,
         MediaModule,
         ChallengesModule,
+        GamificationModule,
     ],
 })
 export class AppModule {}

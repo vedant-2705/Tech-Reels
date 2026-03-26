@@ -13,6 +13,8 @@ export const QUEUES = {
     NOTIFICATION: "notification_queue",
     REPORT_EVALUATION: "report_evaluation_queue",
     FEED_BUILD: "feed_build_queue",
+    STREAK_RESET: "streak_reset_queue",
+    LEADERBOARD_RESET: "leaderboard_reset_queue",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

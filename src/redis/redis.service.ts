@@ -6,6 +6,12 @@ import Redis from "ioredis";
 export class RedisService implements OnModuleDestroy {
     public readonly client: Redis;
 
+    /** Acceptable false-positive rate (1%). */
+    private static readonly BF_ERROR_RATE = 0.01;
+    
+    /** Initial capacity before auto-scaling. */
+    private static readonly BF_CAPACITY = 10000;
+
     constructor(private readonly config: ConfigService) {
         this.client = new Redis({
             host: this.config.get<string>("REDIS_HOST"),
@@ -40,9 +46,19 @@ export class RedisService implements OnModuleDestroy {
         }
     }
 
-    async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
-        const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
-        return result === 'OK';
+    async setNx(
+        key: string,
+        value: string,
+        ttlSeconds: number,
+    ): Promise<boolean> {
+        const result = await this.client.set(
+            key,
+            value,
+            "EX",
+            ttlSeconds,
+            "NX",
+        );
+        return result === "OK";
     }
 
     async del(...keys: string[]): Promise<void> {
@@ -84,18 +100,31 @@ export class RedisService implements OnModuleDestroy {
         return Object.keys(result).length > 0 ? result : null;
     }
 
-    async hincrby(key: string, field: string, increment: number): Promise<void> {
+    async hincrby(
+        key: string,
+        field: string,
+        increment: number,
+    ): Promise<void> {
         await this.client.hincrby(key, field, increment);
     }
 
     //  Set operations
- 
+
     async sadd(key: string, ...members: string[]): Promise<void> {
         await this.client.sadd(key, ...members);
     }
- 
+
     async srem(key: string, ...members: string[]): Promise<void> {
         await this.client.srem(key, ...members);
+    }
+
+    async smembers(key: string): Promise<string[]> {
+        return this.client.smembers(key);
+    }
+
+    async sunion(keys: string[]): Promise<string[]> {
+        if (keys.length === 0) return [];
+        return this.client.sunion(...keys);
     }
 
     //  List operations
@@ -118,6 +147,49 @@ export class RedisService implements OnModuleDestroy {
 
     async llen(key: string): Promise<number> {
         return this.client.llen(key);
+    }
+
+    // Bloom filter operations
+    // Requires Redis Stack (redis/redis-stack image).
+    // All BF.* calls are wrapped in try/catch - graceful degrade on unavailability.
+
+    async bfAdd(key: string, item: string): Promise<void> {
+        try {
+            // BF.RESERVE NX - idempotent init with correct params, no-op if key exists
+            await this.client.call(
+                "BF.RESERVE",
+                key,
+                String(RedisService.BF_ERROR_RATE),
+                String(RedisService.BF_CAPACITY),
+                "NX",
+            );
+            await this.client.call("BF.ADD", key, item);
+        } catch (err) {
+            // Log and swallow - BF unavailability must never break the caller
+            console.warn(
+                `[RedisService] BF.ADD failed for key "${key}":`,
+                (err as Error).message,
+            );
+        }
+    }
+
+    async bfMExists(key: string, items: string[]): Promise<boolean[]> {
+        if (items.length === 0) return [];
+        try {
+            const result = (await this.client.call(
+                "BF.MEXISTS",
+                key,
+                ...items,
+            )) as number[];
+            return result.map((v) => v === 1);
+        } catch (err) {
+            console.warn(
+                `[RedisService] BF.MEXISTS failed for key "${key}":`,
+                (err as Error).message,
+            );
+            // Graceful degrade - treat all as not watched so no reels are wrongly filtered
+            return new Array(items.length).fill(false);
+        }
     }
 
     //  Sorted set operations
