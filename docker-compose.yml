@@ -20,7 +20,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack:latest
     container_name: techreel_redis
     restart: unless-stopped
     ports:
