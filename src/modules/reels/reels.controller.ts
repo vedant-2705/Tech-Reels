@@ -55,6 +55,12 @@ import { SkipAuth } from "@common/decorators/skip-auth.decorator";
 import { REELS_RATE_LIMITS } from "./reels.constants";
 import { ApiErrorDto } from "@common/dto/api-error.dto";
 import { MessageResponseDto } from "@common/dto/message-response.dto";
+import { SearchReelsResponseDto } from "./dto/search-reels-response.dto";
+import { SearchReelsQueryDto } from "./dto/search-reels-query.dto";
+import { ShareReelResponseDto } from "./dto/share-reel-response.dto";
+import { SavedReelsPaginatedResponseDto } from "./dto/saved-reels-paginated-response.dto";
+import { InteractedReelsQueryDto } from "./dto/interacted-reels-query.dto";
+import { LikedReelsPaginatedResponseDto } from "./dto/liked-reels-paginated-response.dto";
 
 /**
  * Reels controller - upload, feed, interactions, and admin endpoints.
@@ -79,7 +85,7 @@ export class ReelsController {
      */
     @Get("me")
     @HttpCode(HttpStatus.OK)
-    @SetRateLimit({ limit: 60, windowSeconds: 60, scope: "user" })
+    @SetRateLimit(REELS_RATE_LIMITS.ME)
     @ApiOperation({
         summary: "List own reels",
         description:
@@ -112,7 +118,7 @@ export class ReelsController {
      */
     @Get("feed")
     @HttpCode(HttpStatus.OK)
-    @SetRateLimit({ limit: 60, windowSeconds: 60, scope: "user" })
+    @SetRateLimit(REELS_RATE_LIMITS.FEED)
     @ApiOperation({
         summary: "Get personalised feed",
         description:
@@ -135,6 +141,116 @@ export class ReelsController {
         @Query() query: FeedQueryDto,
     ): Promise<FeedResponseDto> {
         return this.reelsService.getFeed(userId, query);
+    }
+
+    /**
+     * Return a paginated list of reels the authenticated user has liked.
+     *
+     * @param userId Authenticated user UUID from JWT context.
+     * @param query Compound base64 cursor and limit.
+     * @returns Paginated liked reels with is_liked always true.
+     */
+    @Get("liked")
+    @HttpCode(HttpStatus.OK)
+    @SetRateLimit(REELS_RATE_LIMITS.INTERACTION)
+    @ApiOperation({
+        summary: "List liked reels",
+        description:
+            "Returns active reels liked by the authenticated user, most recently liked first. " +
+            "is_liked is always true on this list. is_saved is fetched per item. " +
+            "Uses compound base64 cursor pagination on (liked_at, reel_id).",
+    })
+    @ApiResponse({
+        status: 200,
+        description: "Liked reels returned.",
+        type: LikedReelsPaginatedResponseDto,
+    })
+    @ApiResponse({
+        status: 401,
+        description: "Unauthorized.",
+        type: ApiErrorDto,
+    })
+    async getLikedReels(
+        @CurrentUser("userId") userId: string,
+        @Query() query: InteractedReelsQueryDto,
+    ): Promise<LikedReelsPaginatedResponseDto> {
+        return this.reelsService.getLikedReels(userId, query);
+    }
+
+    /**
+     * Return a paginated list of reels the authenticated user has saved.
+     *
+     * @param userId Authenticated user UUID from JWT context.
+     * @param query Compound base64 cursor and limit.
+     * @returns Paginated saved reels with is_saved always true.
+     */
+    @Get("saved")
+    @HttpCode(HttpStatus.OK)
+    @SetRateLimit(REELS_RATE_LIMITS.INTERACTION)
+    @ApiOperation({
+        summary: "List saved reels",
+        description:
+            "Returns active reels saved by the authenticated user, most recently saved first. " +
+            "is_saved is always true on this list. is_liked is fetched per item. " +
+            "Uses compound base64 cursor pagination on (saved_at, reel_id).",
+    })
+    @ApiResponse({
+        status: 200,
+        description: "Saved reels returned.",
+        type: SavedReelsPaginatedResponseDto,
+    })
+    @ApiResponse({
+        status: 401,
+        description: "Unauthorized.",
+        type: ApiErrorDto,
+    })
+    async getSavedReels(
+        @CurrentUser("userId") userId: string,
+        @Query() query: InteractedReelsQueryDto,
+    ): Promise<SavedReelsPaginatedResponseDto> {
+        return this.reelsService.getSavedReels(userId, query);
+    }
+
+    /**
+     * Search reels by plain-text query matched against tag names and categories.
+     *
+     * @param userId Authenticated user UUID from JWT context.
+     * @param query Search query params (q, cursor, limit).
+     * @returns Paginated search results with matched tag metadata.
+     */
+    @Get("search")
+    @HttpCode(HttpStatus.OK)
+    @SetRateLimit(REELS_RATE_LIMITS.SEARCH)
+    @ApiOperation({
+        summary: "Search reels by text query",
+        description:
+            "Matches query against tag names and categories (ILIKE). " +
+            "Resolves matched tags to candidate reel IDs via Redis SUNION. " +
+            "Filters watched reels via Bloom filter. " +
+            "Sorts results by view_count DESC. " +
+            "Falls back to popular active reels when no tags match. " +
+            "Rate limited to 30 per minute per user.",
+    })
+    @ApiResponse({
+        status: 200,
+        description: "Search results returned.",
+        type: SearchReelsResponseDto,
+    })
+    @ApiResponse({
+        status: 400,
+        description: "Validation failed.",
+        type: ApiErrorDto,
+    })
+    @ApiResponse({
+        status: 401,
+        description: "Unauthorized.",
+        type: ApiErrorDto,
+    })
+    async searchReels(
+        @CurrentUser("userId") userId: string,
+        @Query() query: SearchReelsQueryDto,
+    ): Promise<SearchReelsResponseDto> {
+        return this.reelsService.searchReels(userId, query);
     }
 
     /**
@@ -616,6 +732,48 @@ export class ReelsController {
         @Param("id", ParseUUIDPipe) id: string,
     ): Promise<{ saved: boolean }> {
         return this.reelsService.unsaveReel(userId, id);
+    }
+
+    /**
+     * Record a share action for an active reel and return a shareable URL.
+     *
+     * @param userId Authenticated user UUID from JWT context.
+     * @param id Reel UUID from route parameter.
+     * @returns shared flag and shareable deep-link URL.
+     */
+    @Post(":id/share")
+    @HttpCode(HttpStatus.OK)
+    @SetRateLimit(REELS_RATE_LIMITS.SHARE)
+    @ApiOperation({
+        summary: "Share a reel",
+        description:
+            "Increments share_count in DB and Redis cache. " +
+            "Publishes REEL_SHARED to user_interactions channel. " +
+            "Enqueues feed build job reflecting interest in the reel tags. " +
+            "NOT idempotent - each call increments share_count. " +
+            "Rate limited to 20 per hour per user.",
+    })
+    @ApiParam({ name: "id", description: "Reel UUID" })
+    @ApiResponse({
+        status: 200,
+        description: "Share recorded, shareable URL returned.",
+        type: ShareReelResponseDto,
+    })
+    @ApiResponse({
+        status: 401,
+        description: "Unauthorized.",
+        type: ApiErrorDto,
+    })
+    @ApiResponse({
+        status: 404,
+        description: "Reel not found or not active.",
+        type: ApiErrorDto,
+    })
+    async shareReel(
+        @CurrentUser("userId") userId: string,
+        @Param("id", ParseUUIDPipe) id: string,
+    ): Promise<ShareReelResponseDto> {
+        return this.reelsService.shareReel(userId, id);
     }
 
     // Report - POST /reels/:id/report

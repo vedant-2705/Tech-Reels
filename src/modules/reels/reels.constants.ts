@@ -13,7 +13,7 @@ export const REELS_REDIS_KEYS = {
     /** Hash: full reel metadata. TTL 300s. */
     META_PREFIX: "reel:meta",
     /** Hash: reel draft metadata before upload is confirmed. TTL matches presigned URL window. */
-    DRAFT_PREFIX: 'reel:draft',
+    DRAFT_PREFIX: "reel:draft",
     /** Set: active reel IDs per tag. No TTL - permanent. */
     TAG_SET_PREFIX: "reel_tags:tag",
     /** Bloom filter: watched reel IDs per user. TTL 30 days. */
@@ -62,6 +62,10 @@ export const REELS_MODULE_CONSTANTS = {
     /** Published when feed cache is running low (remaining <= 15). */
     FEED_LOW: "FEED_LOW",
 
+    // shared_events channel
+    /** Published when a reel is shared. */
+    REEL_SHARED: "REEL_SHARED",
+
     // Channel names
     CONTENT_EVENTS: "content_events",
     USER_INTERACTIONS: "user_interactions",
@@ -73,12 +77,12 @@ export const REELS_MODULE_CONSTANTS = {
  * Bloom filter configuration for the watched:{userId} filter.
  * Redis Stack (redis/redis-stack) required for BF.* commands.
  */
-export const REELS_BLOOM = {
-    /** Acceptable false-positive rate (1%). */
-    ERROR_RATE: 0.01,
-    /** Initial capacity before auto-scaling. */
-    CAPACITY: 10000,
-} as const;
+// export const REELS_BLOOM = {
+//     /** Acceptable false-positive rate (1%). */
+//     ERROR_RATE: 0.01,
+//     /** Initial capacity before auto-scaling. */
+//     CAPACITY: 10000,
+// } as const;
 
 /**
  * Remaining feed slots threshold below which a FEED_LOW event is published.
@@ -90,11 +94,16 @@ export const FEED_LOW_THRESHOLD = 15;
  * Applied via @SetRateLimit() decorator on controller methods.
  */
 export const REELS_RATE_LIMITS = {
+    INTERACTION: { limit: 60, windowSeconds: 60, scope: "user" as const },
     CREATE: { limit: 5, windowSeconds: 3600, scope: "user" as const },
     CONFIRM: { limit: 5, windowSeconds: 3600, scope: "user" as const },
     UPDATE: { limit: 20, windowSeconds: 3600, scope: "user" as const },
     DELETE: { limit: 10, windowSeconds: 3600, scope: "user" as const },
     REPORT: { limit: 3, windowSeconds: 3600, scope: "user" as const },
+    SHARE: { limit: 20, windowSeconds: 3600, scope: "user" as const },
+    SEARCH: { limit: 30, windowSeconds: 60, scope: "user" as const },
+    FEED: { limit: 60, windowSeconds: 60, scope: "user" as const },
+    ME: { limit: 60, windowSeconds: 60, scope: "user" as const },
 } as const;
 
 /**
@@ -266,6 +275,18 @@ export const REELS_QUEUE_JOBS = {
      * Consumed by FeedBuildWorker in the Feed module.
      */
     FEED_COLD_START: "cold_start",
+
+    /**
+     * Job name for the feed build queue triggered by a search action.
+     * Signals that the user's search intent should influence feed personalisation.
+     */
+    FEED_SEARCH: "search",
+
+    /**
+     * Job name for the feed build queue triggered by a share action.
+     * Signals interest in the shared reel's tag set.
+     */
+    FEED_SHARE: "share",
 } as const;
 
 // Reel meta cache field names
@@ -310,4 +331,12 @@ export const REELS_LOCKS = {
      * the S3 presigned URL generation round-trip. 30s is conservative.
      */
     UPLOAD_TTL: 30,
+} as const;
+
+/**
+ * App-level environment variable names used by the Reels module.
+ */
+export const REELS_APP_ENV = {
+    /** Base URL for shareable reel links. */
+    APP_BASE_URL: "APP_BASE_URL",
 } as const;

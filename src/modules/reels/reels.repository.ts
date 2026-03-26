@@ -62,6 +62,18 @@ export interface ProcessingResultData {
     duration_seconds: number | null;
 }
 
+/** Decoded compound cursor for liked/saved list pagination. */
+export interface InteractionCursor {
+    timestamp: string;
+    id: string;
+}
+
+/** Reel row extended with the interaction table's created_at for cursor building. */
+export interface InteractedReel extends Reel {
+    /** created_at from liked_reels or saved_reels - used to build next cursor. */
+    lr_created_at: string;
+}
+
 /**
  * Repository handling all persistence and cache operations for the Reels module.
  */
@@ -291,12 +303,187 @@ export class ReelsRepository {
     async getTagsForReel(reelId: string): Promise<ReelTag[]> {
         const result = await this.db.query<ReelTag>(
             `SELECT t.id, t.name, t.category
-       FROM tags t
-       JOIN reel_tags rt ON rt.tag_id = t.id
-       WHERE rt.reel_id = $1`,
+            FROM tags t
+            JOIN reel_tags rt ON rt.tag_id = t.id
+            WHERE rt.reel_id = $1`,
             [reelId],
         );
         return result.rows;
+    }
+
+    /**
+     * Find tags whose name or category matches a plain-text query (case-insensitive).
+     * Used by the search endpoint to resolve query string -> tag IDs.
+     *
+     * @param q Plain-text search query.
+     * @returns Array of matching tag objects (id, name, category).
+     */
+    async findTagsByQuery(
+        q: string,
+    ): Promise<{ id: string; name: string; category: string }[]> {
+        const result = await this.db.query<{
+            id: string;
+            name: string;
+            category: string;
+        }>(
+            `SELECT id, name, category
+            FROM tags
+            WHERE name ILIKE $1
+                OR category ILIKE $1`,
+            [`%${q}%`],
+        );
+        return result.rows;
+    }
+
+    /**
+     * Fetch active reels from a candidate ID set, sorted by view_count DESC.
+     * Candidate IDs come from a Redis SUNION - DB handles sort and pagination.
+     * Returns both the page of results and the total candidate count for has_more.
+     *
+     * @param candidateIds Array of reel UUIDs from Redis SUNION (already BF-filtered).
+     * @param offset Integer offset for pagination.
+     * @param limit Page size.
+     * @returns Object with reel rows and total count of valid candidates.
+     */
+    async searchCandidates(
+        candidateIds: string[],
+        offset: number,
+        limit: number,
+    ): Promise<{ reels: Reel[]; total: number }> {
+        if (candidateIds.length === 0) return { reels: [], total: 0 };
+
+        const countResult = await this.db.query<{ count: string }>(
+            `SELECT COUNT(*)::text AS count
+            FROM reels
+            WHERE id = ANY($1)
+                AND status = 'active'
+                AND deleted_at IS NULL`,
+            [candidateIds],
+        );
+
+        const total = parseInt(countResult.rows[0]?.count ?? "0", 10);
+
+        if (total === 0) return { reels: [], total: 0 };
+
+        const result = await this.db.query<Reel>(
+            `SELECT
+                r.*,
+                u.username,
+                u.avatar_url,
+                COALESCE(
+                    json_agg(
+                        json_build_object('id', t.id, 'name', t.name, 'category', t.category)
+                    ) FILTER (WHERE t.id IS NOT NULL),
+                    '[]'
+                ) AS tags
+            FROM reels r
+            JOIN users u ON u.id = r.creator_id
+            LEFT JOIN reel_tags rt ON rt.reel_id = r.id
+            LEFT JOIN tags t ON t.id = rt.tag_id
+            WHERE r.id = ANY($1)
+              AND r.status = 'active'
+              AND r.deleted_at IS NULL
+            GROUP BY r.id, u.username, u.avatar_url
+            ORDER BY r.view_count DESC
+            LIMIT $2 OFFSET $3`,
+            [candidateIds, limit, offset],
+        );
+
+        return { reels: result.rows, total };
+    }
+
+    /**
+     * Fetch active reel IDs from DB for a given set of tag IDs.
+     * Used as fallback when Redis tag sets are empty (cache miss or flush).
+     *
+     * @param tagIds Array of tag UUIDs to search against.
+     * @returns Array of reel ID strings.
+     */
+    async findActiveReelIdsByTagIds(tagIds: string[]): Promise<string[]> {
+        if (tagIds.length === 0) return [];
+        const result = await this.db.query<{ id: string }>(
+            `SELECT DISTINCT r.id
+            FROM reels r
+            JOIN reel_tags rt ON rt.reel_id = r.id
+            WHERE rt.tag_id = ANY($1)
+                AND r.status = 'active'
+                AND r.deleted_at IS NULL`,
+            [tagIds],
+        );
+        return result.rows.map((r) => r.id);
+    }
+
+    /**
+     * Fetch candidate reels for cold start feed personalisation.
+     * Two-part UNION:
+     *   Part 1 - reels from user's top 5 affinity tags (personalised)
+     *   Part 2 - popular reels from categories NOT in user's affinity (variety)
+     * UNION deduplicates automatically.
+     * Returns reel ID and category for round-robin interleaving in service layer.
+     *
+     * @param userId User UUID.
+     * @returns Array of { reelId, category } spanning multiple categories.
+     */
+    async getColdStartCandidates(
+        userId: string,
+    ): Promise<{ reelId: string; category: string }[]> {
+        const result = await this.db.query<{
+            reel_id: string;
+            category: string;
+        }>(
+            `WITH affinity_tags AS (
+             -- User's top 5 tags by score
+             SELECT tag_id
+             FROM user_topic_affinity
+             WHERE user_id = $1
+             ORDER BY score DESC
+             LIMIT 5
+         ),
+         affinity_categories AS (
+             -- Categories covered by user's affinity tags
+             SELECT DISTINCT t.category
+             FROM tags t
+             JOIN affinity_tags at ON at.tag_id = t.id
+         ),
+         part1 AS (
+             -- Reels from user's affinity tags
+             SELECT DISTINCT ON (r.id) r.id AS reel_id, t.category
+             FROM user_topic_affinity uta
+             JOIN affinity_tags at ON at.tag_id = uta.tag_id
+             JOIN reel_tags rt     ON rt.tag_id = uta.tag_id
+             JOIN reels r          ON r.id = rt.reel_id
+             JOIN tags t           ON t.id = rt.tag_id
+             WHERE uta.user_id = $1
+               AND r.status = 'active'
+               AND r.deleted_at IS NULL
+             ORDER BY r.id
+         ),
+         part2 AS (
+             -- Popular reels from categories NOT in user's affinity
+             SELECT DISTINCT ON (r.id) r.id AS reel_id, t.category
+             FROM reels r
+             JOIN reel_tags rt ON rt.reel_id = r.id
+             JOIN tags t       ON t.id = rt.tag_id
+             WHERE r.status = 'active'
+               AND r.deleted_at IS NULL
+               AND t.category NOT IN (SELECT category FROM affinity_categories)
+             ORDER BY r.id, r.view_count DESC
+             LIMIT 20
+         ),
+         combined AS (
+             SELECT reel_id, category FROM part1
+             UNION
+             SELECT reel_id, category FROM part2
+         )
+         SELECT reel_id, category
+         FROM combined
+         ORDER BY RANDOM()`,
+            [userId],
+        );
+        return result.rows.map((row) => ({
+            reelId: row.reel_id,
+            category: row.category,
+        }));
     }
 
     // DB - Write methods
@@ -565,6 +752,109 @@ export class ReelsRepository {
     }
 
     /**
+     * Fetch a paginated list of reels the user has liked, most recently liked first.
+     * Active reels only. Uses compound keyset cursor on (lr.created_at, lr.reel_id)
+     * for stable pagination.
+     *
+     * @param userId User UUID.
+     * @param limit Page size (fetch limit + 1 to determine has_more).
+     * @param cursor Optional decoded compound cursor { timestamp, id }.
+     * @returns Array of InteractedReel (Reel + lr_created_at alias).
+     */
+    async findLikedByUser(
+        userId: string,
+        limit: number,
+        cursor?: InteractionCursor,
+    ): Promise<InteractedReel[]> {
+        const params: unknown[] = [userId, limit];
+        let cursorClause = "";
+
+        if (cursor) {
+            params.push(cursor.timestamp, cursor.id);
+            cursorClause = `AND (lr.created_at, lr.reel_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
+        }
+
+        const result = await this.db.query<InteractedReel>(
+            `SELECT
+                r.*,
+                u.username,
+                u.avatar_url,
+                lr.created_at AS lr_created_at,
+                COALESCE(
+                    json_agg(
+                        json_build_object('id', t.id, 'name', t.name, 'category', t.category)
+                    ) FILTER (WHERE t.id IS NOT NULL),
+                    '[]'
+                ) AS tags
+            FROM liked_reels lr
+            JOIN reels r ON r.id = lr.reel_id
+            JOIN users u ON u.id = r.creator_id
+            LEFT JOIN reel_tags rt ON rt.reel_id = r.id
+            LEFT JOIN tags t ON t.id = rt.tag_id
+            WHERE lr.user_id = $1
+              AND r.status = 'active'
+              AND r.deleted_at IS NULL
+              ${cursorClause}
+            GROUP BY r.id, u.username, u.avatar_url, lr.created_at, lr.reel_id
+            ORDER BY lr.created_at DESC, lr.reel_id DESC
+            LIMIT $2`,
+            params,
+        );
+        return result.rows;
+    }
+
+    /**
+     * Fetch a paginated list of reels the user has saved, most recently saved first.
+     * Active reels only. Uses compound keyset cursor on (sr.created_at, sr.reel_id).
+     *
+     * @param userId User UUID.
+     * @param limit Page size (fetch limit + 1 to determine has_more).
+     * @param cursor Optional decoded compound cursor { timestamp, id }.
+     * @returns Array of InteractedReel (Reel + lr_created_at alias).
+     */
+    async findSavedByUser(
+        userId: string,
+        limit: number,
+        cursor?: InteractionCursor,
+    ): Promise<InteractedReel[]> {
+        const params: unknown[] = [userId, limit];
+        let cursorClause = "";
+
+        if (cursor) {
+            params.push(cursor.timestamp, cursor.id);
+            cursorClause = `AND (sr.created_at, sr.reel_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
+        }
+
+        const result = await this.db.query<InteractedReel>(
+            `SELECT
+                r.*,
+                u.username,
+                u.avatar_url,
+                sr.created_at AS lr_created_at,
+                COALESCE(
+                    json_agg(
+                        json_build_object('id', t.id, 'name', t.name, 'category', t.category)
+                    ) FILTER (WHERE t.id IS NOT NULL),
+                    '[]'
+                ) AS tags
+            FROM saved_reels sr
+            JOIN reels r ON r.id = sr.reel_id
+            JOIN users u ON u.id = r.creator_id
+            LEFT JOIN reel_tags rt ON rt.reel_id = r.id
+            LEFT JOIN tags t ON t.id = rt.tag_id
+            WHERE sr.user_id = $1
+              AND r.status = 'active'
+              AND r.deleted_at IS NULL
+              ${cursorClause}
+            GROUP BY r.id, u.username, u.avatar_url, sr.created_at, sr.reel_id
+            ORDER BY sr.created_at DESC, sr.reel_id DESC
+            LIMIT $2`,
+            params,
+        );
+        return result.rows;
+    }
+
+    /**
      * Insert a like row. Silently ignores duplicate likes.
      *
      * @param userId User UUID.
@@ -648,6 +938,24 @@ export class ReelsRepository {
        VALUES ($1, $2, $3, $4, $5, 'pending', now())
        ON CONFLICT (reporter_id, reel_id) DO NOTHING`,
             [id, reporterId, reelId, reason, details ?? null],
+        );
+    }
+
+    /**
+     * Increment the share_count of a reel by 1.
+     * NOT idempotent - every call increments. Multiple shares from the
+     * same user are valid (copy-link action can be repeated).
+     *
+     * @param reelId Reel UUID.
+     * @returns void
+     */
+    async incrementShareCount(reelId: string): Promise<void> {
+        await this.db.query(
+            `UPDATE reels
+            SET share_count = share_count + 1,
+                updated_at  = now()
+            WHERE id = $1`,
+            [reelId],
         );
     }
 
@@ -736,10 +1044,7 @@ export class ReelsRepository {
      * @param reelId Reel UUID (generated client-side before any DB row exists).
      * @param draft  Full draft payload to store.
      */
-    async setDraft(
-        reelId: string,
-        draft: ReelDraft,
-    ): Promise<void> {
+    async setDraft(reelId: string, draft: ReelDraft): Promise<void> {
         const key = `${REELS_REDIS_KEYS.DRAFT_PREFIX}:${reelId}`;
         await this.redis.hset(key, {
             creatorId: draft.creatorId,

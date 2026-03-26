@@ -52,12 +52,14 @@ import {
     REEL_META_FIELD,
     REEL_STATUS,
     REELS_ACCEPTED_MIME,
+    REELS_APP_ENV,
     REELS_LOCKS,
     REELS_MAX_UPLOAD_BYTES,
     REELS_MESSAGES,
     REELS_MODULE_CONSTANTS,
     REELS_PRESIGN_EXPIRES_IN,
     REELS_QUEUE_JOBS,
+    REELS_REDIS_KEYS,
     REELS_S3_ENV,
 } from "./reels.constants";
 import { QUEUES } from "@queues/queue-names";
@@ -71,6 +73,18 @@ import { MessageResponseDto } from "@common/dto/message-response.dto";
 import { UploadInProgressException } from "./exceptions/upload-in-progress.exception";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 import { buildReelUploadKey } from "./utils/build-reel-upload-key.util";
+import { SearchReelsQueryDto } from "./dto/search-reels-query.dto";
+import { SearchReelsResponseDto } from "./dto/search-reels-response.dto";
+import { ShareReelResponseDto } from "./dto/share-reel-response.dto";
+import { buildReelShareUrl } from "./utils/build-reel-share-url.util";
+import { InteractedReelItemDto } from "./dto/interacted-reel-item.dto";
+import {
+    decodeInteractionCursor,
+    encodeInteractionCursor,
+} from "./utils/interaction-cursor.util";
+import { SavedReelsPaginatedResponseDto } from "./dto/saved-reels-paginated-response.dto";
+import { InteractedReelsQueryDto } from "./dto/interacted-reels-query.dto";
+import { LikedReelsPaginatedResponseDto } from "./dto/liked-reels-paginated-response.dto";
 
 /**
  * Orchestrates all Reels workflows, side effects, and cache management.
@@ -432,35 +446,52 @@ export class ReelsService {
         const feedLength = await this.reelsRepository.getFeedLength(userId);
 
         if (feedLength === 0) {
-            // Cold start - enqueue rebuild and return DB fallback
             void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_COLD_START, {
                 userId,
                 reason: REELS_QUEUE_JOBS.FEED_COLD_START,
             });
 
-            const fallbackReels = await this.reelsRepository.findActive(10);
+            await this.buildColdStartFeed(userId);
 
-            if (fallbackReels.length === 0) {
+            // Feed is now warm - read the first page directly instead of returning empty
+            // This avoids the duplicate-data problem of returning next_cursor: 0
+            const warmIds = await this.reelsRepository.getFeedSlice(
+                userId,
+                0,
+                (query.limit ?? 10) - 1,
+            );
+
+            if (warmIds.length === 0) {
                 return { data: [], meta: { next_cursor: 0, has_more: false } };
             }
 
-            // Fetch is_liked / is_saved for fallback reels
-            const fallbackIds = fallbackReels.map((r) => r.id);
-            const [likedIds, savedIds] = await Promise.all([
-                this.reelsRepository.bulkIsLiked(userId, fallbackIds),
-                this.reelsRepository.bulkIsSaved(userId, fallbackIds),
-            ]);
-            const likedSet = new Set(likedIds);
-            const savedSet = new Set(savedIds);
+            const warmReels = await this.resolveReelMetas(warmIds);
+            // const warmReelIds = warmReels.map((r) => r.id);
+            // const [likedIds, savedIds] = await Promise.all([
+            //     this.reelsRepository.bulkIsLiked(userId, warmReelIds),
+            //     this.reelsRepository.bulkIsSaved(userId, warmReelIds),
+            // ]);
+            // const likedSet = new Set(likedIds);
+            // const savedSet = new Set(savedIds);
 
-            const data: FeedItemDto[] = fallbackReels.map((r) => ({
-                ...this.toReelResponseDto(r),
-                is_liked: likedSet.has(r.id),
-                is_saved: savedSet.has(r.id),
-            }));
+            const warmReelsMapped = await this.annotateReelsWithInteractions(userId, warmReels);
 
-            // next_cursor = 0 so client retries from start once cache is warm
-            return { data, meta: { next_cursor: 0, has_more: false } };
+            const totalFeedLength =
+                await this.reelsRepository.getFeedLength(userId);
+            const remaining = totalFeedLength - warmIds.length;
+
+            return {
+                // data: warmReels.map((r) => ({
+                //     ...r,
+                //     is_liked: likedSet.has(r.id),
+                //     is_saved: savedSet.has(r.id),
+                // })),
+                data: warmReelsMapped,
+                meta: {
+                    next_cursor: warmIds.length,
+                    has_more: remaining > 0,
+                },
+            };
         }
 
         // Read feed slice from Redis List
@@ -490,20 +521,22 @@ export class ReelsService {
         // Resolve reel metadata (cache-first, DB fallback per miss)
         const reels = await this.resolveReelMetas(reelIds);
 
-        // Bulk fetch is_liked / is_saved
-        const [likedIds, savedIds] = await Promise.all([
-            this.reelsRepository.bulkIsLiked(userId, reelIds),
-            this.reelsRepository.bulkIsSaved(userId, reelIds),
-        ]);
-        const likedSet = new Set(likedIds);
-        const savedSet = new Set(savedIds);
+        // // Bulk fetch is_liked / is_saved
+        // const [likedIds, savedIds] = await Promise.all([
+        //     this.reelsRepository.bulkIsLiked(userId, reelIds),
+        //     this.reelsRepository.bulkIsSaved(userId, reelIds),
+        // ]);
+        // const likedSet = new Set(likedIds);
+        // const savedSet = new Set(savedIds);
 
-        // Build response
-        const data: FeedItemDto[] = reels.map((r) => ({
-            ...r,
-            is_liked: likedSet.has(r.id),
-            is_saved: savedSet.has(r.id),
-        }));
+        // // Build response
+        // const data: FeedItemDto[] = reels.map((r) => ({
+        //     ...r,
+        //     is_liked: likedSet.has(r.id),
+        //     is_saved: savedSet.has(r.id),
+        // }));
+
+        const data = await this.annotateReelsWithInteractions(userId, reels);
 
         return {
             data,
@@ -856,6 +889,341 @@ export class ReelsService {
         };
     }
 
+    // Endpoint - POST /reels/:id/share
+
+    /**
+     * Record a share action for an active reel.
+     * Increments share_count in DB and Redis cache.
+     * Publishes REEL_SHARED event to user_interactions channel.
+     * Enqueues feed build job signalling interest in the reel's tags.
+     * NOT idempotent - each call increments share_count.
+     *
+     * @param userId Authenticated user UUID.
+     * @param reelId Reel UUID from route parameter.
+     * @returns shared flag and shareable URL.
+     */
+    async shareReel(
+        userId: string,
+        reelId: string,
+    ): Promise<ShareReelResponseDto> {
+        // Fetch reel - 404 if not found or not active
+        const reel = await this.reelsRepository.findById(reelId);
+        if (!reel || reel.status !== REEL_STATUS.ACTIVE) {
+            throw new ReelNotFoundException();
+        }
+
+        // Increment share_count in DB
+        await this.reelsRepository.incrementShareCount(reelId);
+
+        // Increment share_count in Redis cache (if key exists)
+        await this.reelsRepository.incrMetaCount(
+            reelId,
+            REEL_META_FIELD.SHARE_COUNT,
+            1,
+        );
+
+        // Publish REEL_SHARED event (fire and forget)
+        void this.redis.publish(
+            REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
+            JSON.stringify({
+                event: REELS_MODULE_CONSTANTS.REEL_SHARED,
+                userId,
+                reelId,
+                tags: reel.tags.map((t) => t.id),
+                timestamp: new Date().toISOString(),
+            }),
+        );
+
+        // Enqueue feed build job - sharing signals interest in this reel's tags
+        void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_SHARE, {
+            userId,
+            reason: REELS_QUEUE_JOBS.FEED_SHARE,
+            tagIds: reel.tags.map((t) => t.id),
+        });
+
+        // Build shareable URL from env
+        const appBaseUrl =
+            this.config.get<string>(REELS_APP_ENV.APP_BASE_URL) ?? "";
+        const share_url = buildReelShareUrl(appBaseUrl, reelId);
+
+        return { shared: true, share_url };
+    }
+
+    // Endpoint - GET /reels/liked
+
+    /**
+     * Return a paginated list of reels the authenticated user has liked.
+     * Active reels only, most recently liked first.
+     * Compound base64 cursor on (liked_reels.created_at, reel_id).
+     * is_liked is always true on this list. is_saved is fetched via bulkIsSaved.
+     *
+     * @param userId Authenticated user UUID.
+     * @param query Cursor and limit query params.
+     * @returns Paginated liked reels with interaction flags.
+     */
+    async getLikedReels(
+        userId: string,
+        query: InteractedReelsQueryDto,
+    ): Promise<LikedReelsPaginatedResponseDto> {
+        const limit = query.limit ?? 20;
+        const cursor = decodeInteractionCursor(query.cursor);
+
+        // Fetch limit + 1 to determine has_more
+        const rows = await this.reelsRepository.findLikedByUser(
+            userId,
+            limit + 1,
+            cursor,
+        );
+
+        const hasMore = rows.length > limit;
+        const page = rows.slice(0, limit);
+
+        // Build next cursor from last row in page
+        const nextCursor =
+            hasMore && page.length > 0
+                ? encodeInteractionCursor(page[page.length - 1])
+                : null;
+
+        // Bulk fetch is_saved (is_liked is always true on this list)
+        const pageIds = page.map((r) => r.id);
+        const savedIds = await this.reelsRepository.bulkIsSaved(
+            userId,
+            pageIds,
+        );
+        const savedSet = new Set(savedIds);
+
+        return {
+            data: page.map(
+                (r): InteractedReelItemDto => ({
+                    ...this.toReelResponseDto(r),
+                    is_liked: true,
+                    is_saved: savedSet.has(r.id),
+                }),
+            ),
+            meta: {
+                next_cursor: nextCursor,
+                has_more: hasMore,
+            },
+        };
+    }
+
+    // Endpoint - GET /reels/saved
+
+    /**
+     * Return a paginated list of reels the authenticated user has saved.
+     * Active reels only, most recently saved first.
+     * Compound base64 cursor on (saved_reels.created_at, reel_id).
+     * is_saved is always true on this list. is_liked is fetched via bulkIsLiked.
+     *
+     * @param userId Authenticated user UUID.
+     * @param query Cursor and limit query params.
+     * @returns Paginated saved reels with interaction flags.
+     */
+    async getSavedReels(
+        userId: string,
+        query: InteractedReelsQueryDto,
+    ): Promise<SavedReelsPaginatedResponseDto> {
+        const limit = query.limit ?? 20;
+        const cursor = decodeInteractionCursor(query.cursor);
+
+        // Fetch limit + 1 to determine has_more
+        const rows = await this.reelsRepository.findSavedByUser(
+            userId,
+            limit + 1,
+            cursor,
+        );
+
+        const hasMore = rows.length > limit;
+        const page = rows.slice(0, limit);
+
+        // Build next cursor from last row in page
+        const nextCursor =
+            hasMore && page.length > 0
+                ? encodeInteractionCursor(page[page.length - 1])
+                : null;
+
+        // Bulk fetch is_liked (is_saved is always true on this list)
+        const pageIds = page.map((r) => r.id);
+        const likedIds = await this.reelsRepository.bulkIsLiked(
+            userId,
+            pageIds,
+        );
+        const likedSet = new Set(likedIds);
+
+        return {
+            data: page.map(
+                (r): InteractedReelItemDto => ({
+                    ...this.toReelResponseDto(r),
+                    is_liked: likedSet.has(r.id),
+                    is_saved: true,
+                }),
+            ),
+            meta: {
+                next_cursor: nextCursor,
+                has_more: hasMore,
+            },
+        };
+    }
+
+    // Endpoint - GET /reels/search
+
+    /**
+     * Search reels by plain-text query matched against tag names and categories.
+     * Flow: match tags -> SUNION Redis Sets -> BF filter watched -> DB sort by view_count.
+     * Falls back to popular active reels when no tags match the query.
+     *
+     * @param userId Authenticated user UUID.
+     * @param dto Search query params (q, cursor, limit).
+     * @returns Paginated search results with matched tag metadata.
+     */
+    async searchReels(
+        userId: string,
+        dto: SearchReelsQueryDto,
+    ): Promise<SearchReelsResponseDto> {
+        const offset = dto.cursor ?? 0;
+        const limit = dto.limit ?? 10;
+
+        // resolve query to matching tags
+        const matchedTags = await this.reelsRepository.findTagsByQuery(dto.q);
+
+        // no tag match -> popular active reels fallback
+        if (matchedTags.length === 0) {
+            const fallback = await this.reelsRepository.findActive(limit);
+            // const fallbackIds = fallback.map((r) => r.id);
+            // const [likedIds, savedIds] = await Promise.all([
+            //     this.reelsRepository.bulkIsLiked(userId, fallbackIds),
+            //     this.reelsRepository.bulkIsSaved(userId, fallbackIds),
+            // ]);
+            // const likedSet = new Set(likedIds);
+            // const savedSet = new Set(savedIds);
+
+            const fallbackReelsMapped = await this.annotateReelsWithInteractions(userId, fallback);
+
+            return {
+                // data: fallback.map((r) => ({
+                //     ...this.toReelResponseDto(r),
+                //     is_liked: likedSet.has(r.id),
+                //     is_saved: savedSet.has(r.id),
+                // })),
+                data: fallbackReelsMapped,
+                meta: { next_cursor: null, has_more: false },
+                matched_tags: [],
+            };
+        }
+
+        // SUNION across all matched tag Redis Sets
+        const tagSetKeys = matchedTags.map(
+            (t) => `${REELS_REDIS_KEYS.TAG_SET_PREFIX}:${t.id}`,
+        );
+        const candidateIds = await this.redis.sunion(tagSetKeys);
+
+        // SUNION empty -> Redis sets missing or flushed, fall back to DB tag search
+        let resolvedCandidateIds = candidateIds;
+
+        if (candidateIds.length === 0) {
+            this.logger.warn(
+                `SUNION returned empty for query "${dto.q}" - Redis tag sets missing, falling back to DB`,
+            );
+            const dbCandidateIds =
+                await this.reelsRepository.findActiveReelIdsByTagIds(
+                    matchedTags.map((t) => t.id),
+                );
+
+            // DB also empty -> truly no active reels for these tags -> popular fallback
+            if (dbCandidateIds.length === 0) {
+                const fallback = await this.reelsRepository.findActive(limit);
+                // const fallbackIds = fallback.map((r) => r.id);
+                // const [likedIds, savedIds] = await Promise.all([
+                //     this.reelsRepository.bulkIsLiked(userId, fallbackIds),
+                //     this.reelsRepository.bulkIsSaved(userId, fallbackIds),
+                // ]);
+                // const likedSet = new Set(likedIds);
+                // const savedSet = new Set(savedIds);
+
+                const fallbackReelsMapped = await this.annotateReelsWithInteractions(userId, fallback);
+
+                return {
+                    // data: fallback.map((r) => ({
+                    //     ...this.toReelResponseDto(r),
+                    //     is_liked: likedSet.has(r.id),
+                    //     is_saved: savedSet.has(r.id),
+                    // })),
+                    data: fallbackReelsMapped,
+                    meta: { next_cursor: null, has_more: false },
+                    matched_tags: matchedTags,
+                };
+            }
+
+            resolvedCandidateIds = dbCandidateIds;
+        }
+
+        // BF filter watched reels (graceful degrade on BF unavailability)
+        const watchedKey = `${REELS_REDIS_KEYS.WATCHED_PREFIX}:${userId}`;
+
+        // Cap candidates before BF check to avoid huge BF.MEXISTS calls
+        const cappedCandidates = resolvedCandidateIds.slice(0, 200);
+
+        let filteredIds = cappedCandidates;
+
+        try {
+            const watchedFlags = await this.redis.bfMExists(
+                watchedKey,
+                cappedCandidates,
+            );
+            filteredIds = cappedCandidates.filter((_, i) => !watchedFlags[i]);
+        } catch {
+            // bfMExists already handles internally - this is an extra safety net
+            filteredIds = cappedCandidates;
+        }
+
+        // If BF filtered everything out, fall back to unfiltered capped candidates
+        if (filteredIds.length === 0) {
+            filteredIds = cappedCandidates;
+        }
+
+        // DB fetch sorted by view_count DESC with pagination
+        const { reels, total } = await this.reelsRepository.searchCandidates(
+            filteredIds,
+            offset,
+            limit + 1,
+        );
+
+        const hasMore = reels.length > limit;
+        const page = reels.slice(0, limit);
+
+        // bulk is_liked / is_saved
+        // const pageIds = page.map((r) => r.id);
+        // const [likedIds, savedIds] = await Promise.all([
+        //     this.reelsRepository.bulkIsLiked(userId, pageIds),
+        //     this.reelsRepository.bulkIsSaved(userId, pageIds),
+        // ]);
+        // const likedSet = new Set(likedIds);
+        // const savedSet = new Set(savedIds);
+
+        const pageReelsMapped = await this.annotateReelsWithInteractions(userId, page);
+
+        // enqueue feed build job (fire and forget)
+        void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_SEARCH, {
+            userId,
+            reason: REELS_QUEUE_JOBS.FEED_SEARCH,
+            tagIds: matchedTags.map((t) => t.id),
+        });
+
+        return {
+            // data: page.map((r) => ({
+            //     ...this.toReelResponseDto(r),
+            //     is_liked: likedSet.has(r.id),
+            //     is_saved: savedSet.has(r.id),
+            // })),
+            data: pageReelsMapped,
+            meta: {
+                next_cursor: hasMore ? offset + limit : null,
+                has_more: hasMore,
+            },
+            matched_tags: matchedTags,
+        };
+    }
+
     // Private helpers
 
     /**
@@ -888,6 +1256,171 @@ export class ReelsService {
         }
 
         return results;
+    }
+
+    /**
+     * Build a cold start feed for a user with no cached feed.
+     * Fetches candidates spanning user's affinity categories plus popular reels
+     * from other categories (variety). Filters watched via Bloom filter.
+     * Round-robin interleaves across categories - no two consecutive reels
+     * share the same category.
+     * Targets 20 reels in cache (client receives subset via query.limit in getFeed).
+     * RPUSH to feed:{userId} with NO EXPIRE - Feed module sets TTL on next write.
+     *
+     * Falls back to findActive(20) only when platform has no active reels at all.
+     *
+     * @param userId Authenticated user UUID.
+     * @returns Ordered FeedItemDto[] ready for response.
+     */
+    private async buildColdStartFeed(userId: string): Promise<FeedItemDto[]> {
+        // fetch mixed candidates (affinity + variety)
+        const candidates =
+            await this.reelsRepository.getColdStartCandidates(userId);
+
+        // empty means brand new platform with no active reels at all
+        if (candidates.length === 0) {
+            const fallback = await this.reelsRepository.findActive(20);
+            if (fallback.length === 0) return [];
+            // const fallbackIds = fallback.map((r) => r.id);
+            // const [likedIds, savedIds] = await Promise.all([
+            //     this.reelsRepository.bulkIsLiked(userId, fallbackIds),
+            //     this.reelsRepository.bulkIsSaved(userId, fallbackIds),
+            // ]);
+            // const likedSet = new Set(likedIds);
+            // const savedSet = new Set(savedIds);
+            // return fallback.map((r) => ({
+            //     ...this.toReelResponseDto(r),
+            //     is_liked: likedSet.has(r.id),
+            //     is_saved: savedSet.has(r.id),
+            // }));
+
+            const fallbackReels = await this.annotateReelsWithInteractions(userId, fallback);
+
+            return fallbackReels;
+        }
+
+        // BF filter watched reels (graceful degrade)
+        const watchedKey = `${REELS_REDIS_KEYS.WATCHED_PREFIX}:${userId}`;
+        const candidateIds = candidates.map((c) => c.reelId);
+        let filteredCandidates = candidates;
+
+        try {
+            const watchedFlags = await this.redis.bfMExists(
+                watchedKey,
+                candidateIds,
+            );
+            const afterFilter = candidates.filter((_, i) => !watchedFlags[i]);
+            // Only apply filter if something remains - avoid empty feed for power users
+            if (afterFilter.length > 0) {
+                filteredCandidates = afterFilter;
+            }
+        } catch {
+            this.logger.warn(
+                `BF filter failed for cold start feed, userId=${userId}`,
+            );
+        }
+
+        // group by category for round-robin interleaving
+        const byCategory = new Map<string, string[]>();
+        for (const { reelId, category } of filteredCandidates) {
+            const bucket = byCategory.get(category) ?? [];
+            bucket.push(reelId);
+            byCategory.set(category, bucket);
+        }
+
+        // Shuffle IDs within each category bucket
+        for (const [category, bucket] of byCategory) {
+            for (let i = bucket.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [bucket[i], bucket[j]] = [bucket[j], bucket[i]];
+            }
+            byCategory.set(category, bucket);
+        }
+
+        // round-robin across categories until 20 reels selected
+        // addedThisRound === 0 means all queues exhausted - break to avoid infinite loop
+        const TARGET = 20;
+        const selected: string[] = [];
+        const categoryQueues = Array.from(byCategory.values());
+
+        // Fisher-Yates shuffle on category queue order
+        for (let i = categoryQueues.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [categoryQueues[i], categoryQueues[j]] = [
+                categoryQueues[j],
+                categoryQueues[i],
+            ];
+        }
+
+        const pointers = new Array(categoryQueues.length).fill(0);
+
+        while (selected.length < TARGET) {
+            let addedThisRound = 0;
+
+            for (
+                let i = 0;
+                i < categoryQueues.length && selected.length < TARGET;
+                i++
+            ) {
+                const ptr = pointers[i];
+                if (ptr < categoryQueues[i].length) {
+                    selected.push(categoryQueues[i][ptr]);
+                    pointers[i]++;
+                    addedThisRound++;
+                }
+            }
+
+            if (addedThisRound === 0) break;
+        }
+
+        if (selected.length === 0) return [];
+
+        // RPUSH to feed list, NO EXPIRE (Feed module owns TTL)
+        await this.redis.rpush(
+            `${REELS_REDIS_KEYS.FEED_PREFIX}:${userId}`,
+            ...selected,
+        );
+
+        // resolve metadata cache-first
+        const reels = await this.resolveReelMetas(selected);
+
+        // // bulk is_liked / is_saved
+        // const reelIds = reels.map((r) => r.id);
+        // const [likedIds, savedIds] = await Promise.all([
+        //     this.reelsRepository.bulkIsLiked(userId, reelIds),
+        //     this.reelsRepository.bulkIsSaved(userId, reelIds),
+        // ]);
+        // const likedSet = new Set(likedIds);
+        // const savedSet = new Set(savedIds);
+
+        // return reels.map((r) => ({
+        //     ...r,
+        //     is_liked: likedSet.has(r.id),
+        //     is_saved: savedSet.has(r.id),
+        // }));
+
+        const selectedReels = await this.annotateReelsWithInteractions(userId, reels);
+
+        return selectedReels;
+    }
+
+    private async annotateReelsWithInteractions(
+        userId: string,
+        reels: ReelResponseDto[] | Reel[],
+    ): Promise<FeedItemDto[]> {
+        const reelIds = reels.map((r) => r.id);
+        const [likedIds, savedIds] = await Promise.all([
+            this.reelsRepository.bulkIsLiked(userId, reelIds),
+            this.reelsRepository.bulkIsSaved(userId, reelIds),
+        ]);
+        const likedSet = new Set(likedIds);
+        const savedSet = new Set(savedIds);
+
+        return reels.map((r) => ({
+            ...r,
+            is_liked: likedSet.has(r.id),
+            is_saved: savedSet.has(r.id),
+        }));
     }
 
     /**
