@@ -20,6 +20,8 @@ export const REELS_REDIS_KEYS = {
     WATCHED_PREFIX: "watched",
     /** List: personalised feed reel IDs per user. TTL 1800s. */
     FEED_PREFIX: "feed",
+    /** Set: reel IDs that have received view events since last cron sync. No TTL. */
+    DIRTY_VIEWS: "reels:dirty:views",
 } as const;
 
 /**

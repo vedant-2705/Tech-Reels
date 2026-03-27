@@ -26,6 +26,9 @@ import { ReelsProcessingService } from "./reels-processing.service";
 
 import { TagsModule } from "@modules/tags/tags.module";
 import { QUEUES } from "@queues/queue-names";
+import { ReelWatchSubscriber } from "./subscribers/reel-watch.subscriber";
+import { ViewCountSyncService } from "./services/view-count-sync.service";
+import { ReelInteractionsSubscriber } from "./subscribers/reel-interaction.subscriber";
 
 /**
  * Registers Reels runtime dependencies, queue bindings, and exported services.
@@ -37,7 +40,14 @@ import { QUEUES } from "@queues/queue-names";
         BullModule.registerQueue({ name: QUEUES.FEED_BUILD }),
     ],
     controllers: [ReelsController],
-    providers: [ReelsService, ReelsRepository, ReelsProcessingService],
+    providers: [
+        ReelsService, 
+        ReelsRepository, 
+        ReelsProcessingService,
+        ReelInteractionsSubscriber,
+        // ReelWatchSubscriber,
+        ViewCountSyncService,
+    ],
     exports: [
         /**
          * Exported for Media module integration.

@@ -8,7 +8,7 @@ export class RedisService implements OnModuleDestroy {
 
     /** Acceptable false-positive rate (1%). */
     private static readonly BF_ERROR_RATE = 0.01;
-    
+
     /** Initial capacity before auto-scaling. */
     private static readonly BF_CAPACITY = 10000;
 

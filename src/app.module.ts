@@ -9,6 +9,9 @@ import redisConfig from "./config/redis.config";
 import jwtConfig from "./config/jwt.config";
 import s3Config from "./config/s3.config";
 
+// Cron Job
+import { ScheduleModule } from "@nestjs/schedule";
+
 // Infrastructure - global modules
 import { DatabaseModule } from "./database/database.module";
 import { RedisModule } from "./redis/redis.module";
@@ -56,6 +59,9 @@ import { GamificationModule } from "@modules/gamification/gamification.module";
                 },
             }),
         }),
+
+        // Cron jobs
+        ScheduleModule.forRoot(),
 
         //  Global infrastructure
         DatabaseModule,
