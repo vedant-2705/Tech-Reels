@@ -1,98 +1,410 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Tech Reels
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A comprehensive NestJS-based backend platform for creating, sharing, and discovering educational video content (reels) with gamification, skill paths, and community challenges.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 📋 Table of Contents
 
-## Description
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Running the Application](#running-the-application)
+- [Database Migrations](#database-migrations)
+- [API Documentation](#api-documentation)
+- [Development](#development)
+- [Testing](#testing)
+- [Docker Deployment](#docker-deployment)
+- [Contributing](#contributing)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 🎯 Overview
 
-## Project setup
+Tech Reels is an educational platform designed to deliver short-form video content (reels) with integrated gamification elements. Users can:
 
-```bash
-$ npm install
+- Create and share educational reels
+- Learn through structured skill paths
+- Participate in challenges to earn XP and badges
+- Build streaks and maintain learning consistency
+- Discover content through intelligent feed recommendations
+- Interact with community members through ratings and feedback
+
+## ✨ Features
+
+### Core Features
+
+- **User Management**
+  - Account creation and management
+  - OAuth integration support
+  - Role-based access control (Admin, User)
+  - Account status management (Active, Inactive, Suspended)
+
+- **Reels System**
+  - Upload and process video content
+  - Support for high-quality video encoding via AWS MediaConvert
+  - Reel metadata and descriptions
+  - User interactions (likes, saves, bookmarks)
+
+- **Gamification**
+  - XP (Experience Points) system with ledger tracking
+  - Badge achievements and unlockable milestones
+  - Streak tracking for consistent engagement
+  - Streak freeze mechanism for flexibility
+
+- **Skill Paths**
+  - Structured learning paths
+  - Progress tracking through skill path completion
+  - Prerequisites and dependencies
+
+- **Challenges**
+  - Timed and open-ended challenges
+  - Attempt tracking and scoring
+  - Rewards and badges upon completion
+
+- **Tagging System**
+  - Flexible tagging for content categorization
+  - Topic-based affinity tracking
+  - Tag relationships and hierarchies
+
+- **Feed & Discovery**
+  - Personalized feed recommendations
+  - Topic affinity-based content delivery
+  - Cursor-based pagination for infinite scroll
+
+- **Content Moderation**
+  - Report system for user-generated content
+  - Trust score calculation for reporters
+  - Content moderation workflows
+
+### Technical Features
+
+- **Authentication & Authorization**
+  - JWT-based authentication
+  - Global JWT auth guard with opt-out capability
+  - Role-based access control (RBAC)
+
+- **Performance & Scalability**
+  - Redis caching layer
+  - BullMQ for asynchronous task processing
+  - Queue-based job processing
+  - Database connection pooling
+
+- **API Features**
+  - RESTful API with consistent response formats
+  - Pagination support (cursor-based and offset-based)
+  - Comprehensive error handling with RFC 7807 error responses
+  - Swagger/OpenAPI documentation
+
+- **Infrastructure**
+  - Docker support for easy deployment
+  - Database migrations system
+  - AWS S3 for media storage
+  - AWS MediaConvert for video processing
+  - Redis for caching and queues
+
+## 🛠️ Tech Stack
+
+### Backend Framework
+- **NestJS** - Progressive Node.js framework
+- **TypeScript** - Type-safe development
+
+### Databases & Caching
+- **PostgreSQL** - Primary data store
+- **Redis** (Redis Stack) - Caching and message broker
+- **BullMQ** - Job queue system
+
+### Authentication
+- **Passport.js** - Authentication middleware
+- **JWT** - Token-based authentication
+- **bcrypt** - Password hashing
+
+### Cloud Services
+- **AWS S3** - Media storage
+- **AWS MediaConvert** - Video processing and encoding
+
+### API Documentation
+- **Swagger/OpenAPI** - Interactive API documentation
+
+### Development Tools
+- **ESLint** - Code linting
+- **Prettier** - Code formatting
+- **Jest** - Testing framework
+- **TypeORM/Knex** - Database ORM/query builder
+
+## 📁 Project Structure
+
+```
+Tech_Reels/
+├── src/
+│   ├── main.ts                 # Application entry point
+│   ├── app.module.ts           # Root module
+│   ├── app.controller.ts       # Root controller
+│   ├── app.service.ts          # Root service
+│   │
+│   ├── common/                 # Shared utilities & infrastructure
+│   │   ├── constants/          # Application constants
+│   │   ├── decorators/         # Custom decorators (@CurrentUser, @Roles, etc)
+│   │   ├── dto/                # Shared DTOs
+│   │   ├── exceptions/         # Custom exceptions
+│   │   ├── filters/            # Exception filters
+│   │   ├── guards/             # Route guards (JWT, RBAC, Rate Limit, IP Whitelist)
+│   │   ├── interceptors/       # Global interceptors (logging)
+│   │   ├── pipes/              # Validation pipes
+│   │   └── utils/              # Helper utilities
+│   │
+│   ├── config/                 # Configuration modules
+│   │   ├── app.config.ts
+│   │   ├── database.config.ts
+│   │   ├── jwt.config.ts
+│   │   ├── redis.config.ts
+│   │   └── s3.config.ts
+│   │
+│   ├── database/               # Database layer
+│   │   ├── database.module.ts
+│   │   ├── database.service.ts
+│   │   └── migrations/         # Database migrations
+│   │
+│   ├── modules/                # Feature modules
+│   │   ├── auth/               # Authentication
+│   │   ├── users/              # User management
+│   │   ├── reels/              # Video reels system
+│   │   ├── media/              # Media handling & uploads
+│   │   ├── tags/               # Tagging system
+│   │   ├── challenges/         # Challenges & attempts
+│   │   ├── gamification/       # XP, badges, streaks
+│   │   ├── skill-paths/        # Learning paths
+│   │   └── feed/               # Feed & recommendations
+│   │
+│   ├── queues/                 # Job queue configuration
+│   ├── redis/                  # Redis integration
+│   └── s3/                     # AWS S3 integration
+│
+├── test/                       # E2E tests
+├── scripts/                    # Utility scripts
+│   ├── generate-keys.js        # JWT key generation
+│   └── seed-admin.ts           # Admin user seeding
+│
+├── docker-compose.yml          # Docker services configuration
+├── database.json               # Database migration config
+├── package.json                # Dependencies
+├── tsconfig.json               # TypeScript configuration
+└── nest-cli.json               # NestJS CLI configuration
 ```
 
-## Compile and run the project
+## 📦 Prerequisites
+
+- **Node.js** >= 18.x
+- **npm** or **yarn**
+- **Docker** and **Docker Compose** (for containerized setup)
+- **PostgreSQL** 16+ (or use Docker)
+- **Redis** (or use Docker)
+
+## 🚀 Installation
+
+### 1. Clone the Repository
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git clone <repository-url>
+cd Tech_Reels
 ```
 
-## Run tests
+### 2. Install Dependencies
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
 ```
 
-## Deployment
+### 3. Generate JWT Keys (Optional)
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+If you need to generate new JWT keys:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run generate:keys
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+This generates `private.key` and `public.key` files.
 
-## Resources
+## ⚙️ Configuration
 
-Check out a few resources that may come in handy when working with NestJS:
+### Environment Variables
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Create environment configuration files based on your deployment environment:
 
-## Support
+- `.env.development` - Development environment
+- `.env.production` - Production environment
+- `.env.test` - Testing environment
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Key Environment Variables
 
-## Stay in touch
+```env
+# App
+NODE_ENV=development
+APP_PORT=3000
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5433/tech_reel
+DATABASE_HOST=localhost
+DATABASE_PORT=5433
+DATABASE_USER=postgres
+DATABASE_PASSWORD=password
+DATABASE_NAME=tech_reel
 
-## License
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+# JWT
+JWT_SECRET=your-secret-key
+JWT_EXPIRY=24h
+
+# AWS S3
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_S3_BUCKET=your-bucket-name
+
+# AWS MediaConvert
+AWS_MEDIACONVERT_ROLE_ARN=arn:aws:iam::account-id:role/role-name
+AWS_MEDIACONVERT_QUEUE_ARN=arn:aws:mediaconvert:region:account-id:queues/queue-name
+```
+
+## 🏃 Running the Application
+
+### Development Mode
+
+```bash
+# Start with auto-reload
+npm run start:dev
+
+# Start with debugging
+npm run start:debug
+```
+
+The API will be available at `http://localhost:3000/api/v1`
+The Swagger docs will be available at `http://localhost:3000/api/v1/docs`
+
+### Production Mode
+
+```bash
+# Build the application
+npm run build
+
+# Start production server
+npm run start:prod
+```
+
+### Using Docker Compose
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+This will start:
+- PostgreSQL on port 5433
+- Redis on port 6379
+
+## 🗄️ Database Migrations
+
+### Run Migrations
+
+```bash
+# Run pending migrations
+npm run migrate
+
+# Rollback last migration
+npm run migrate:down
+
+# Create new migration
+npm run migrate:create -- --name migration_name
+```
+
+Migrations are stored in `src/database/migrations/` and use the naming convention `##_description.js`.
+
+### Seed Database
+
+To seed an admin user:
+
+```bash
+npm run seed:admin
+```
+
+## 📚 API Documentation
+
+Swagger documentation is automatically generated and available at:
+
+```
+http://localhost:3000/api/v1/docs
+```
+
+The API follows these patterns:
+- **Base URL**: `/api/v1`
+- **Authentication**: Bearer token in `Authorization` header
+- **Response Format**: JSON with consistent error structures (RFC 7807)
+
+### Key Endpoints
+
+- `POST /auth/register` - User registration
+- `POST /auth/login` - User login
+- `GET /users/me` - Current user info
+- `POST /reels` - Create a reel
+- `GET /feed` - Get personalized feed
+- `POST /challenges` - Create a challenge
+- `GET /gamification/xp` - Get XP leaderboard
+
+
+## 🐳 Docker Deployment
+
+### Docker Compose Services
+
+The `docker-compose.yml` provides:
+
+1. **PostgreSQL** - Database service
+   - Image: postgres:16-alpine
+   - Port: 5433
+   - Database: tech_reel
+
+2. **Redis** - Cache and message broker
+   - Image: redis/redis-stack:latest
+   - Port: 6379
+
+
+## 🔐 Security Features
+
+- **JWT Authentication** - Secure token-based authentication
+- **Password Hashing** - bcrypt for secure password storage
+- **Rate Limiting** - Guards against brute force attacks
+- **IP Whitelisting** - Optional IP-based access control
+- **Role-Based Access Control** - Fine-grained permission management
+- **HMAC Validation** - For webhook security (media processing)
+- **Global Exception Handling** - Consistent error responses without leaking sensitive data
+
+## 📊 Architecture Highlights
+
+### Modular Design
+Each feature module (auth, users, reels, etc.) is self-contained with:
+- Service layer for business logic
+- Controller layer for HTTP handling
+- DTOs for data validation and transformation
+- Repository patterns for data access
+
+### Dependency Injection
+NestJS dependency injection container manages all service dependencies, promoting loose coupling and testability.
+
+### Middleware Layers
+- **Global Pipes**: Validation using class-validator
+- **Global Filters**: Centralized error handling
+- **Global Interceptors**: Logging and cross-cutting concerns
+- **Global Guards**: Authentication and authorization
+
+---
+
+**Last Updated**: March 2026
