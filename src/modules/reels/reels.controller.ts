@@ -254,6 +254,39 @@ export class ReelsController {
     }
 
     /**
+     * Return a paginated list of reels created by a specific creator.
+     *
+     * @param creatorId Creator UUID from route parameter.
+     * @param query Pagination query params.
+     * @returns Paginated reel list with creator info.
+     */
+    @Get("creator/:creatorId")
+    @HttpCode(HttpStatus.OK)
+    @SetRateLimit(REELS_RATE_LIMITS.SEARCH) 
+    @ApiOperation({
+        summary: "Get reels by creator",
+        description:
+            "Returns paginated active reels created by a specific user.",
+    })
+    @ApiParam({ name: "creatorId", description: "Creator UUID" })
+    @ApiResponse({
+        status: 200,
+        description: "Reels returned.",
+        type: MyReelsPaginatedResponseDto,
+    })
+    @ApiResponse({
+        status: 401,
+        description: "UnAuthorised.",
+        type: ApiErrorDto,
+    })
+    async getReelsByCreator(
+        @Param("creatorId", ParseUUIDPipe) creatorId: string,
+        @Query() query: MyReelsQueryDto,
+    ): Promise<MyReelsPaginatedResponseDto> {
+        return this.reelsService.getReelsByCreator(creatorId, query);
+    }
+
+    /**
      * Admin: list all reels with optional filters.
      *
      * @param query Admin filter and pagination query params.
@@ -565,9 +598,10 @@ export class ReelsController {
     async watchReel(
         @CurrentUser("userId") userId: string,
         @Param("id", ParseUUIDPipe) id: string,
+        @CurrentUser("role") role: string,
         @Body() dto: WatchReelDto,
     ): Promise<void> {
-        await this.reelsService.watchReel(userId, id, dto);
+        await this.reelsService.watchReel(userId, id, role, dto);
     }
 
     // Like - POST /reels/:id/like

@@ -673,13 +673,14 @@ export class ReelsService {
     async watchReel(
         userId: string,
         reelId: string,
+        role: string,
         dto: WatchReelDto,
     ): Promise<void> {
         // Verify reel exists (404 if not)
         const reel = await this.reelsRepository.findById(reelId);
         if (!reel) throw new ReelNotFoundException();
 
-        if (reel.creator_id === userId) {
+        if (reel.creator_id === userId || role === "admin") {
             // Creator watching own reel - return silently, no event published
             return;
         }
@@ -1309,6 +1310,38 @@ export class ReelsService {
                 has_more: hasMore,
             },
             matched_tags: matchedTags,
+        };
+    }
+
+    // Endpoint- GET /reels/creator/:creatorId
+    
+    /**
+     * Get all active reels by a specific creator. Public endpoint, no auth required.
+     *
+     * @param creatorId Creator user UUID from route parameter.
+     * @returns List of active reels by the creator.
+     */
+    async getReelsByCreator(creatorId: string, query: MyReelsQueryDto): Promise<MyReelsPaginatedResponseDto> {
+        const limit = query.limit ?? 20;
+
+        // Fetch limit+1 to determine has_more
+        const rows = await this.reelsRepository.findByCreator(
+            creatorId,
+            limit,
+            query.cursor,
+            REEL_STATUS.ACTIVE, // Only active reels are visible on this endpoint
+        );
+
+        const hasMore = rows.length > limit;
+        const data = rows.slice(0, limit);
+
+        return {
+            data: data.map((r) => this.toReelResponseDto(r)),
+            meta: {
+                next_cursor: hasMore ? data[data.length - 1].id : null,
+                has_more: hasMore,
+                total: data.length,
+            },
         };
     }
 
