@@ -571,7 +571,7 @@ export class ReelsService {
                         }),
                     );
                 }
-                
+
                 const reels = await this.resolveReelMetas(ids);
                 const data = await this.annotateReelsWithInteractions(
                     userId,
@@ -678,6 +678,11 @@ export class ReelsService {
         // Verify reel exists (404 if not)
         const reel = await this.reelsRepository.findById(reelId);
         if (!reel) throw new ReelNotFoundException();
+
+        if (reel.creator_id === userId) {
+            // Creator watching own reel - return silently, no event published
+            return;
+        }
 
         // Publish REEL_WATCH_ENDED - all side effects handled by async subscriber
         // BF.ADD watched:{userId} reelId - done by subscriber
