@@ -26,6 +26,7 @@ import { ReelsModule } from "@modules/reels/reels.module";
 import { MediaModule } from "@modules/media/media.module";
 import { ChallengesModule } from "@modules/challenges/challenges.module";
 import { GamificationModule } from "@modules/gamification/gamification.module";
+import { FeedModule } from "@modules/feed/feed.module";
 
 @Module({
     imports: [
@@ -77,6 +78,7 @@ import { GamificationModule } from "@modules/gamification/gamification.module";
         MediaModule,
         ChallengesModule,
         GamificationModule,
+        FeedModule,
     ],
 })
 export class AppModule {}

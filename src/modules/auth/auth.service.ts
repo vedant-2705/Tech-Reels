@@ -281,10 +281,10 @@ export class AuthService {
                     type: AUTH_QUEUE_JOBS.WELCOME_EMAIL,
                     userId: user.id,
                 });
-                void this.feedBuildQueue.add(AUTH_QUEUE_JOBS.NEW_USER, {
-                    userId: user.id,
-                    reason: AUTH_QUEUE_JOBS.NEW_USER,
-                });
+                // void this.feedBuildQueue.add(AUTH_QUEUE_JOBS.NEW_USER, {
+                //     userId: user.id,
+                //     reason: AUTH_QUEUE_JOBS.NEW_USER,
+                // });
             }
         }
 

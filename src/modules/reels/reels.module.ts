@@ -26,7 +26,6 @@ import { ReelsProcessingService } from "./reels-processing.service";
 
 import { TagsModule } from "@modules/tags/tags.module";
 import { QUEUES } from "@queues/queue-names";
-import { ReelWatchSubscriber } from "./subscribers/reel-watch.subscriber";
 import { ViewCountSyncService } from "./services/view-count-sync.service";
 import { ReelInteractionsSubscriber } from "./subscribers/reel-interaction.subscriber";
 

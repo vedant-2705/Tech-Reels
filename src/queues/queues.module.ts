@@ -20,6 +20,7 @@ import { QUEUES } from "./queue-names";
         BullModule.registerQueue({ name: QUEUES.FEED_BUILD }),
         BullModule.registerQueue({ name: QUEUES.STREAK_RESET }),
         BullModule.registerQueue({ name: QUEUES.LEADERBOARD_RESET }),
+        BullModule.registerQueue({ name: QUEUES.AFFINITY_UPDATE }),
     ],
     exports: [BullModule],
 })

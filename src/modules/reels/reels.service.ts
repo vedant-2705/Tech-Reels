@@ -435,78 +435,176 @@ export class ReelsService {
      * @param query Integer cursor and limit.
      * @returns Paginated feed items with is_liked / is_saved flags.
      */
+    // async getFeed(
+    //     userId: string,
+    //     query: FeedQueryDto,
+    // ): Promise<FeedResponseDto> {
+    //     const cursor = query.cursor ?? 0;
+    //     const limit = query.limit ?? 10;
+
+    //     // Check feed length for cold-start detection
+    //     const feedLength = await this.reelsRepository.getFeedLength(userId);
+
+    //     if (feedLength === 0) {
+    //         void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_COLD_START, {
+    //             userId,
+    //             reason: REELS_QUEUE_JOBS.FEED_COLD_START,
+    //         });
+
+    //         const fallback = await this.buildColdStartFeed(userId);
+    //         return {
+    //             data: fallback,
+    //             meta: { next_cursor: 0, has_more: true },
+    //         };
+    //     }
+
+    //     // Read feed slice from Redis List
+    //     const reelIds = await this.reelsRepository.getFeedSlice(
+    //         userId,
+    //         cursor,
+    //         cursor + limit - 1,
+    //     );
+
+    //     if (reelIds.length === 0) {
+    //         return { data: [], meta: { next_cursor: cursor, has_more: false } };
+    //     }
+
+    //     // Check feed low threshold and publish FEED_LOW if needed
+    //     const remaining = feedLength - (cursor + limit);
+    //     if (remaining <= FEED_LOW_THRESHOLD) {
+    //         void this.redis.publish(
+    //             REELS_MODULE_CONSTANTS.FEED_EVENTS,
+    //             JSON.stringify({
+    //                 event: REELS_MODULE_CONSTANTS.FEED_LOW,
+    //                 userId,
+    //                 remaining,
+    //             }),
+    //         );
+    //     }
+
+    //     // Resolve reel metadata (cache-first, DB fallback per miss)
+    //     const reels = await this.resolveReelMetas(reelIds);
+
+    //     // // Bulk fetch is_liked / is_saved
+    //     // const [likedIds, savedIds] = await Promise.all([
+    //     //     this.reelsRepository.bulkIsLiked(userId, reelIds),
+    //     //     this.reelsRepository.bulkIsSaved(userId, reelIds),
+    //     // ]);
+    //     // const likedSet = new Set(likedIds);
+    //     // const savedSet = new Set(savedIds);
+
+    //     // // Build response
+    //     // const data: FeedItemDto[] = reels.map((r) => ({
+    //     //     ...r,
+    //     //     is_liked: likedSet.has(r.id),
+    //     //     is_saved: savedSet.has(r.id),
+    //     // }));
+
+    //     const data = await this.annotateReelsWithInteractions(userId, reels);
+
+    //     return {
+    //         data,
+    //         meta: {
+    //             next_cursor: cursor + reelIds.length,
+    //             has_more: remaining > 0,
+    //         },
+    //     };
+    // }
+
+    // Endpoint 7 - GET /reels/:id
+
     async getFeed(
         userId: string,
         query: FeedQueryDto,
     ): Promise<FeedResponseDto> {
-        const cursor = query.cursor ?? 0;
         const limit = query.limit ?? 10;
 
-        // Check feed length for cold-start detection
         const feedLength = await this.reelsRepository.getFeedLength(userId);
 
         if (feedLength === 0) {
+            // Enqueue async build - no-op if already queued (circuit breaker)
             void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_COLD_START, {
                 userId,
                 reason: REELS_QUEUE_JOBS.FEED_COLD_START,
             });
 
-            await this.buildColdStartFeed(userId);
+            // Wait up to 900ms for the worker to populate the list
+            // This covers the race between onboarding enqueue and first feed request
+            const RETRY_COUNT = 3;
+            const RETRY_DELAY_MS = 300;
 
-            // Feed is now warm - read the first page directly instead of returning empty
-            // This avoids the duplicate-data problem of returning next_cursor: 0
-            const warmIds = await this.reelsRepository.getFeedSlice(
-                userId,
-                0,
-                (query.limit ?? 10) - 1,
-            );
-
-            if (warmIds.length === 0) {
-                return { data: [], meta: { next_cursor: 0, has_more: false } };
+            for (let i = 0; i < RETRY_COUNT; i++) {
+                await new Promise<void>((res) =>
+                    setTimeout(res, RETRY_DELAY_MS),
+                );
+                const length = await this.reelsRepository.getFeedLength(userId);
+                if (length > 0) break;
             }
 
-            const warmReels = await this.resolveReelMetas(warmIds);
-            // const warmReelIds = warmReels.map((r) => r.id);
-            // const [likedIds, savedIds] = await Promise.all([
-            //     this.reelsRepository.bulkIsLiked(userId, warmReelIds),
-            //     this.reelsRepository.bulkIsSaved(userId, warmReelIds),
-            // ]);
-            // const likedSet = new Set(likedIds);
-            // const savedSet = new Set(savedIds);
-
-            const warmReelsMapped = await this.annotateReelsWithInteractions(userId, warmReels);
-
-            const totalFeedLength =
+            // Re-check after retries
+            const freshLength =
                 await this.reelsRepository.getFeedLength(userId);
-            const remaining = totalFeedLength - warmIds.length;
 
-            return {
-                // data: warmReels.map((r) => ({
-                //     ...r,
-                //     is_liked: likedSet.has(r.id),
-                //     is_saved: savedSet.has(r.id),
-                // })),
-                data: warmReelsMapped,
-                meta: {
-                    next_cursor: warmIds.length,
-                    has_more: remaining > 0,
-                },
-            };
+            if (freshLength > 0) {
+                // Worker finished in time - pop and serve normally
+                const ids = await this.reelsRepository.popFeedItems(
+                    userId,
+                    limit,
+                );
+                if (ids.length === 0) {
+                    return {
+                        data: [],
+                        meta: { next_cursor: 0, has_more: false },
+                    };
+                }
+
+                // Publish FEED_LOW if remaining items are below threshold
+                const remaining =
+                    await this.reelsRepository.getFeedLength(userId);
+                if (remaining <= FEED_LOW_THRESHOLD) {
+                    void this.redis.publish(
+                        REELS_MODULE_CONSTANTS.FEED_EVENTS,
+                        JSON.stringify({
+                            event: REELS_MODULE_CONSTANTS.FEED_LOW,
+                            userId,
+                            remaining,
+                        }),
+                    );
+                }
+                
+                const reels = await this.resolveReelMetas(ids);
+                const data = await this.annotateReelsWithInteractions(
+                    userId,
+                    reels,
+                );
+                const remainingLength =
+                    await this.reelsRepository.getFeedLength(userId);
+                return {
+                    data,
+                    meta: {
+                        next_cursor: 0,
+                        has_more: remainingLength > 0,
+                    },
+                };
+            }
+
+            // Worker still not done - run pipeline synchronously as personalised fallback
+            // This path is rare in production (worker usually finishes within 900ms)
+            this.logger.warn(
+                `Feed worker did not finish in time for userId=${userId} - running synchronous fallback`,
+            );
+            return await this.buildPersonalisedFallback(userId, limit);
         }
 
-        // Read feed slice from Redis List
-        const reelIds = await this.reelsRepository.getFeedSlice(
-            userId,
-            cursor,
-            cursor + limit - 1,
-        );
+        // Normal path - list has items, pop and serve
+        const reelIds = await this.reelsRepository.popFeedItems(userId, limit);
 
         if (reelIds.length === 0) {
-            return { data: [], meta: { next_cursor: cursor, has_more: false } };
+            return { data: [], meta: { next_cursor: 0, has_more: false } };
         }
 
-        // Check feed low threshold and publish FEED_LOW if needed
-        const remaining = feedLength - (cursor + limit);
+        // Publish FEED_LOW if remaining items are below threshold
+        const remaining = await this.reelsRepository.getFeedLength(userId);
         if (remaining <= FEED_LOW_THRESHOLD) {
             void this.redis.publish(
                 REELS_MODULE_CONSTANTS.FEED_EVENTS,
@@ -518,37 +616,17 @@ export class ReelsService {
             );
         }
 
-        // Resolve reel metadata (cache-first, DB fallback per miss)
         const reels = await this.resolveReelMetas(reelIds);
-
-        // // Bulk fetch is_liked / is_saved
-        // const [likedIds, savedIds] = await Promise.all([
-        //     this.reelsRepository.bulkIsLiked(userId, reelIds),
-        //     this.reelsRepository.bulkIsSaved(userId, reelIds),
-        // ]);
-        // const likedSet = new Set(likedIds);
-        // const savedSet = new Set(savedIds);
-
-        // // Build response
-        // const data: FeedItemDto[] = reels.map((r) => ({
-        //     ...r,
-        //     is_liked: likedSet.has(r.id),
-        //     is_saved: savedSet.has(r.id),
-        // }));
-
         const data = await this.annotateReelsWithInteractions(userId, reels);
 
         return {
             data,
             meta: {
-                next_cursor: cursor + reelIds.length,
+                next_cursor: 0, // cursor is meaningless with LPOP - client owns position
                 has_more: remaining > 0,
             },
         };
     }
-
-    // Endpoint 7 - GET /reels/:id
-
     /**
      * Return a single reel by ID (public, unauthenticated).
      * Only active reels are visible - any other status returns 404.
@@ -1097,7 +1175,8 @@ export class ReelsService {
             // const likedSet = new Set(likedIds);
             // const savedSet = new Set(savedIds);
 
-            const fallbackReelsMapped = await this.annotateReelsWithInteractions(userId, fallback);
+            const fallbackReelsMapped =
+                await this.annotateReelsWithInteractions(userId, fallback);
 
             return {
                 // data: fallback.map((r) => ({
@@ -1140,7 +1219,8 @@ export class ReelsService {
                 // const likedSet = new Set(likedIds);
                 // const savedSet = new Set(savedIds);
 
-                const fallbackReelsMapped = await this.annotateReelsWithInteractions(userId, fallback);
+                const fallbackReelsMapped =
+                    await this.annotateReelsWithInteractions(userId, fallback);
 
                 return {
                     // data: fallback.map((r) => ({
@@ -1200,7 +1280,10 @@ export class ReelsService {
         // const likedSet = new Set(likedIds);
         // const savedSet = new Set(savedIds);
 
-        const pageReelsMapped = await this.annotateReelsWithInteractions(userId, page);
+        const pageReelsMapped = await this.annotateReelsWithInteractions(
+            userId,
+            page,
+        );
 
         // enqueue feed build job (fire and forget)
         void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_SEARCH, {
@@ -1272,31 +1355,29 @@ export class ReelsService {
      * @param userId Authenticated user UUID.
      * @returns Ordered FeedItemDto[] ready for response.
      */
-    private async buildColdStartFeed(userId: string): Promise<FeedItemDto[]> {
+    private async buildPersonalisedFallback(
+        userId: string,
+        limit: number,
+    ): Promise<FeedResponseDto> {
         // fetch mixed candidates (affinity + variety)
         const candidates =
             await this.reelsRepository.getColdStartCandidates(userId);
 
         // empty means brand new platform with no active reels at all
         if (candidates.length === 0) {
-            const fallback = await this.reelsRepository.findActive(20);
-            if (fallback.length === 0) return [];
-            // const fallbackIds = fallback.map((r) => r.id);
-            // const [likedIds, savedIds] = await Promise.all([
-            //     this.reelsRepository.bulkIsLiked(userId, fallbackIds),
-            //     this.reelsRepository.bulkIsSaved(userId, fallbackIds),
-            // ]);
-            // const likedSet = new Set(likedIds);
-            // const savedSet = new Set(savedIds);
-            // return fallback.map((r) => ({
-            //     ...this.toReelResponseDto(r),
-            //     is_liked: likedSet.has(r.id),
-            //     is_saved: savedSet.has(r.id),
-            // }));
+            const fallback = await this.reelsRepository.findActive(limit);
+            if (fallback.length === 0)
+                return { data: [], meta: { next_cursor: 0, has_more: false } };
 
-            const fallbackReels = await this.annotateReelsWithInteractions(userId, fallback);
+            const fallbackReels = await this.annotateReelsWithInteractions(
+                userId,
+                fallback,
+            );
 
-            return fallbackReels;
+            return {
+                data: fallbackReels,
+                meta: { next_cursor: 0, has_more: true },
+            };
         }
 
         // BF filter watched reels (graceful degrade)
@@ -1337,9 +1418,8 @@ export class ReelsService {
             byCategory.set(category, bucket);
         }
 
-        // round-robin across categories until 20 reels selected
+        // round-robin across categories
         // addedThisRound === 0 means all queues exhausted - break to avoid infinite loop
-        const TARGET = 20;
         const selected: string[] = [];
         const categoryQueues = Array.from(byCategory.values());
 
@@ -1354,12 +1434,12 @@ export class ReelsService {
 
         const pointers = new Array(categoryQueues.length).fill(0);
 
-        while (selected.length < TARGET) {
+        while (selected.length < limit) {
             let addedThisRound = 0;
 
             for (
                 let i = 0;
-                i < categoryQueues.length && selected.length < TARGET;
+                i < categoryQueues.length && selected.length < limit;
                 i++
             ) {
                 const ptr = pointers[i];
@@ -1373,35 +1453,31 @@ export class ReelsService {
             if (addedThisRound === 0) break;
         }
 
-        if (selected.length === 0) return [];
+        if (selected.length === 0) {
+            return { data: [], meta: { next_cursor: 0, has_more: false } };
+        }
 
         // RPUSH to feed list, NO EXPIRE (Feed module owns TTL)
-        await this.redis.rpush(
-            `${REELS_REDIS_KEYS.FEED_PREFIX}:${userId}`,
-            ...selected,
-        );
+        // await this.redis.rpush(
+        //     `${REELS_REDIS_KEYS.FEED_PREFIX}:${userId}`,
+        //     ...selected,
+        // );
 
         // resolve metadata cache-first
         const reels = await this.resolveReelMetas(selected);
 
-        // // bulk is_liked / is_saved
-        // const reelIds = reels.map((r) => r.id);
-        // const [likedIds, savedIds] = await Promise.all([
-        //     this.reelsRepository.bulkIsLiked(userId, reelIds),
-        //     this.reelsRepository.bulkIsSaved(userId, reelIds),
-        // ]);
-        // const likedSet = new Set(likedIds);
-        // const savedSet = new Set(savedIds);
+        const selectedReels = await this.annotateReelsWithInteractions(
+            userId,
+            reels,
+        );
 
-        // return reels.map((r) => ({
-        //     ...r,
-        //     is_liked: likedSet.has(r.id),
-        //     is_saved: savedSet.has(r.id),
-        // }));
-
-        const selectedReels = await this.annotateReelsWithInteractions(userId, reels);
-
-        return selectedReels;
+        return {
+            data: selectedReels,
+            meta: {
+                next_cursor: 0,
+                has_more: true,
+            },
+        };
     }
 
     private async annotateReelsWithInteractions(

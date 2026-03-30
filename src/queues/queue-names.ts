@@ -15,6 +15,7 @@ export const QUEUES = {
     FEED_BUILD: "feed_build_queue",
     STREAK_RESET: "streak_reset_queue",
     LEADERBOARD_RESET: "leaderboard_reset_queue",
+    AFFINITY_UPDATE: "affinity_update_queue",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

@@ -163,9 +163,18 @@ export class RedisService implements OnModuleDestroy {
                 String(RedisService.BF_CAPACITY),
                 "NX",
             );
-            await this.client.call("BF.ADD", key, item);
         } catch (err) {
             // Log and swallow - BF unavailability must never break the caller
+            console.warn(
+                `[RedisService] BF.RESERVE failed for key "${key}":`,
+                (err as Error).message,
+            );
+        }
+
+        // Actual add should still run even if reserve failed
+        try {
+            await this.client.call("BF.ADD", key, item);
+        } catch (err) {
             console.warn(
                 `[RedisService] BF.ADD failed for key "${key}":`,
                 (err as Error).message,
@@ -208,6 +217,54 @@ export class RedisService implements OnModuleDestroy {
 
     async zrevrank(key: string, member: string): Promise<number | null> {
         return this.client.zrevrank(key, member);
+    }
+
+    /**
+     * Read members from a sorted set in descending score order.
+     * Uses ZRANGE ... BYSCORE REV -f modern replacement for deprecated ZREVRANGEBYSCORE.
+     * Returns members with scores between +inf and -inf (i.e. all members),
+     * limited to `count` results starting from offset 0.
+     *
+     * @param key Sorted set Redis key.
+     * @param count Maximum number of members to return.
+     * @returns Array of member strings, highest score first.
+     */
+    async zrangeRev(key: string, count: number): Promise<string[]> {
+        try {
+            const result = (await this.client.call(
+                "ZRANGE",
+                key,
+                "+inf",
+                "-inf",
+                "BYSCORE",
+                "REV",
+                "LIMIT",
+                "0",
+                String(count),
+            )) as string[];
+            return result ?? [];
+        } catch (err) {
+            console.warn(
+                `[RedisService] zrangeRev failed for key "${key}":`,
+                (err as Error).message,
+            );
+            return [];
+        }
+    }
+
+    /**
+     * Trim a list to keep only elements between start and stop indices (inclusive).
+     * Elements outside this range are removed.
+     * Used by FeedBuilderService to cap the feed:{userId} list at FEED_MAX_LIST_SIZE.
+     * Negative indices count from the end: -1 = last element, -200 = 200th from end.
+     *
+     * @param key Redis list key.
+     * @param start Inclusive start index.
+     * @param stop Inclusive stop index.
+     * @returns void
+     */
+    async ltrim(key: string, start: number, stop: number): Promise<void> {
+        await this.client.ltrim(key, start, stop);
     }
 
     //  Pub/Sub

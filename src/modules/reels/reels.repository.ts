@@ -115,11 +115,39 @@ export class ReelsRepository {
        JOIN users u ON u.id = r.creator_id
        LEFT JOIN reel_tags rt ON rt.reel_id = r.id
        LEFT JOIN tags t ON t.id = rt.tag_id
-       WHERE r.id = $1 AND r.deleted_at IS NULL
+       WHERE r.id = $1 AND r.status = 'active' AND r.deleted_at IS NULL
        GROUP BY r.id, u.username, u.avatar_url`,
             [id],
         );
         return result.rows[0] ?? null;
+    }
+
+    async bulkFindByIds(ids: string[]): Promise<Reel[]> {
+        if (ids.length === 0) return [];
+
+        const result = await this.db.query<Reel>(
+            `SELECT
+         r.*,
+         u.username,
+         u.avatar_url,
+         COALESCE(
+           json_agg(
+             json_build_object('id', t.id, 'name', t.name, 'category', t.category)
+           ) FILTER (WHERE t.id IS NOT NULL),
+           '[]'
+         ) AS tags
+       FROM reels r
+       JOIN users u ON u.id = r.creator_id
+       LEFT JOIN reel_tags rt ON rt.reel_id = r.id
+       LEFT JOIN tags t ON t.id = rt.tag_id
+       WHERE r.id = ANY($1)
+            AND r.status = 'active'
+            AND r.deleted_at IS NULL
+       GROUP BY r.id, u.username, u.avatar_url`,
+            [ids],
+        );
+        return result.rows;
+
     }
 
     /**
@@ -1137,6 +1165,22 @@ export class ReelsRepository {
             `${REELS_REDIS_KEYS.FEED_PREFIX}:${userId}`,
             start,
             stop,
+        );
+    }
+
+    /**
+     * Atomically pop N reel IDs from the left of the user's feed list.
+     * Non-blocking - returns empty array if list is empty.
+     * Client is responsible for caching popped IDs for in-session backward scroll.
+     *
+     * @param userId User UUID.
+     * @param count Number of items to pop.
+     * @returns Array of popped reel ID strings.
+     */
+    async popFeedItems(userId: string, count: number): Promise<string[]> {
+        return this.redis.lpop(
+            `${REELS_REDIS_KEYS.FEED_PREFIX}:${userId}`,
+            count,
         );
     }
 

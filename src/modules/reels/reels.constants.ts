@@ -28,8 +28,8 @@ export const REELS_REDIS_KEYS = {
  * TTL values in seconds used by Reels caching logic.
  */
 export const REELS_CACHE_TTL = {
-    /** reel:meta:{reelId} hash - 5 minutes */
-    META: 300,
+    /** reel:meta:{reelId} hash - 10 minutes */
+    META: 600,
     /** reel:draft:{reelId} - 30 minutes. Matches presigned URL expiry window. */
     DRAFT: 1800,
     /** feed:{userId} list - 30 minutes */
@@ -342,3 +342,6 @@ export const REELS_APP_ENV = {
     /** Base URL for shareable reel links. */
     APP_BASE_URL: "APP_BASE_URL",
 } as const;
+
+/** Chunk size for bulk operations for caching */
+export const CHUNK_SIZE = 200;
