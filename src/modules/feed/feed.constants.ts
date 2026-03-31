@@ -212,11 +212,11 @@ export const AFFINITY_DELTAS = {
  * Completion percentage thresholds for watch affinity delta tiers.
  */
 export const WATCH_COMPLETION_THRESHOLDS = {
-    /** completion_pct >= this value → WATCH_HIGH delta. */
+    /** completion_pct >= this value -> WATCH_HIGH delta. */
     HIGH: 80,
-    /** completion_pct >= this value (and < HIGH) → WATCH_MID delta. */
+    /** completion_pct >= this value (and < HIGH) -> WATCH_MID delta. */
     MID: 50,
-    /** completion_pct < MID → WATCH_LOW delta. */
+    /** completion_pct < MID -> WATCH_LOW delta. */
 } as const;
 
 // ---------------------------------------------------------------------------

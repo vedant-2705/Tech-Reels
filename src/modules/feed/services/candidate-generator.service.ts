@@ -82,7 +82,7 @@ export class CandidateGeneratorService {
         const diversified = this.enforceDiversityFloor(
             Array.from(allIds),
             sourceA.topTagIds,
-            sourceD,
+            [...sourceB, ...sourceC, ...sourceD],
         );
 
         const capped = diversified.slice(0, CANDIDATE_CAP);

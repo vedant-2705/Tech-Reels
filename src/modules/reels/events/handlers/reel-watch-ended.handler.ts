@@ -85,7 +85,7 @@ export class ReelWatchEndedHandler implements IReelEventHandler {
         // 2 - HINCRBY reel:meta:{reelId} view_count 1
         try {
             await this.redis.hincrby(
-                `${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`,
+                `${REELS_REDIS_KEYS.INTERACTION_META_PREFIX}:${reelId}`,
                 "view_count",
                 1,
             );

@@ -29,8 +29,8 @@ import {
  * in a transaction (DELETE all + INSERT new). Partial updates to the reel
  * list are not supported - the admin must always provide the full desired list.
  *
- * is_published: toggling from false → true makes the path visible to users
- * and invalidates the path list cache. Toggling true → false hides it.
+ * is_published: toggling from false -> true makes the path visible to users
+ * and invalidates the path list cache. Toggling true -> false hides it.
  */
 export class UpdatePathDto {
     @ApiPropertyOptional({

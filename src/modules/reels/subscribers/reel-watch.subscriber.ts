@@ -185,7 +185,7 @@ export class ReelWatchSubscriber implements OnModuleInit, OnModuleDestroy {
         // Live cache counter - read by feed and reel detail endpoints
         try {
             await this.redis.hincrby(
-                `${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`,
+                `${REELS_REDIS_KEYS.INTERACTION_META_PREFIX}:${reelId}`,
                 'view_count',
                 1,
             );

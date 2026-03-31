@@ -12,6 +12,8 @@
 export const REELS_REDIS_KEYS = {
     /** Hash: full reel metadata. TTL 300s. */
     META_PREFIX: "reel:meta",
+    /** Hash: reel view, like, save metadata. TTL 300s. */
+    INTERACTION_META_PREFIX: "reel:interaction_meta",
     /** Hash: reel draft metadata before upload is confirmed. TTL matches presigned URL window. */
     DRAFT_PREFIX: "reel:draft",
     /** Set: active reel IDs per tag. No TTL - permanent. */

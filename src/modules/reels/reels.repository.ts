@@ -1048,7 +1048,7 @@ export class ReelsRepository {
         field: string,
         by: number,
     ): Promise<void> {
-        const key = `${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`;
+        const key = `${REELS_REDIS_KEYS.INTERACTION_META_PREFIX}:${reelId}`;
         await this.redis.hincrby(key, field, by);
     }
 

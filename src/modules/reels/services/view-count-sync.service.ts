@@ -119,7 +119,7 @@ export class ViewCountSyncService {
      * @returns true if updated, false if skipped.
      */
     private async syncReel(reelId: string): Promise<boolean> {
-        const cacheKey = `${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`;
+        const cacheKey = `${REELS_REDIS_KEYS.INTERACTION_META_PREFIX}:${reelId}`;
 
         // Read live view_count from Redis cache
         const raw = await this.redis.hget(cacheKey, "view_count");

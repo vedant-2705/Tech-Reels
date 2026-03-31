@@ -91,12 +91,12 @@ export class ReelScorerService {
             completionRates.map((r) => [r.reelId, r.avg_completion]),
         );
 
-        // tagId → affinity score map for this user
+        // tagId -> affinity score map for this user
         const affinityMap = new Map(
             affinityTags.map((t) => [t.tagId, t.score]),
         );
 
-        // tagId → category map derived from affinity tags
+        // tagId -> category map derived from affinity tags
         // (covers tags the user has affinity for - sufficient for primary category)
         const tagCategoryMap = new Map(
             affinityTags.map((t) => [t.tagId, t.category]),
@@ -135,8 +135,7 @@ export class ReelScorerService {
                 // Weighted score formula
                 const rawScore =
                     affinityScoreSum * FEED_SCORING_WEIGHTS.AFFINITY +
-                    (avgCompletion / 100) *
-                        FEED_SCORING_WEIGHTS.COMPLETION_RATE +
+                    (avgCompletion / 100) * FEED_SCORING_WEIGHTS.COMPLETION_RATE +
                     saveRate * FEED_SCORING_WEIGHTS.SAVE_RATE +
                     likeRate * FEED_SCORING_WEIGHTS.LIKE_RATE +
                     recencyDecay * FEED_SCORING_WEIGHTS.RECENCY;
