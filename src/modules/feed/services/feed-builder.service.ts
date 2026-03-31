@@ -41,6 +41,7 @@ export class FeedBuilderService {
      * @param scorer Scores and categorises candidates.
      * @param feedRepository Feed data-access for Redis list writes and reads.
      * @param redis Redis service for Bloom filter operations.
+     * @param reelsProcessingService For pre-populating reel:meta cache after feed build.
      */
     constructor(
         private readonly candidateGenerator: CandidateGeneratorService,
