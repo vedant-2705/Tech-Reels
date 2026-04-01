@@ -28,6 +28,7 @@ import { ChallengesModule } from "@modules/challenges/challenges.module";
 import { GamificationModule } from "@modules/gamification/gamification.module";
 import { FeedModule } from "@modules/feed/feed.module";
 import { SkillPathsModule } from "@modules/skill-paths/skill-paths.module";
+import { AdminModule } from "@modules/admin/admin.module";
 
 @Module({
     imports: [
@@ -81,6 +82,7 @@ import { SkillPathsModule } from "@modules/skill-paths/skill-paths.module";
         GamificationModule,
         FeedModule,
         SkillPathsModule,
+        AdminModule,
     ],
 })
 export class AppModule {}
