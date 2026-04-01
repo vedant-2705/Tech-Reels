@@ -2,23 +2,6 @@
 
 A comprehensive NestJS-based backend platform for creating, sharing, and discovering educational video content (reels) with gamification, skill paths, and community challenges.
 
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Running the Application](#running-the-application)
-- [Database Migrations](#database-migrations)
-- [API Documentation](#api-documentation)
-- [Development](#development)
-- [Testing](#testing)
-- [Docker Deployment](#docker-deployment)
-- [Contributing](#contributing)
-
 ## 🎯 Overview
 
 Tech Reels is an educational platform designed to deliver short-form video content (reels) with integrated gamification elements. Users can:
@@ -361,7 +344,7 @@ The API follows these patterns:
 - `GET /gamification/xp` - Get XP leaderboard
 
 
-## 🐳 Docker Deployment
+## 🐳 Docker
 
 ### Docker Compose Services
 
