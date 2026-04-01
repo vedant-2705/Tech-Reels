@@ -113,7 +113,7 @@ export const REEL_META_PREFIX = "reel:meta";
  * Weights applied to each scoring signal in ReelScorerService.
  */
 export const FEED_SCORING_WEIGHTS = {
-    /** Weight for user–tag affinity score sum. */
+    /** Weight for user-tag affinity score sum. */
     AFFINITY: 0.35,
     /** Weight for average watch completion rate. */
     COMPLETION_RATE: 0.25,
@@ -192,7 +192,7 @@ export const AFFINITY_SCORE_MAX = 10.0;
 export const AFFINITY_DELTAS = {
     /** Watch with completion >= 80%. Strong positive signal. */
     WATCH_HIGH: 0.5,
-    /** Watch with completion 50–79%. Mild positive signal. */
+    /** Watch with completion 50-79%. Mild positive signal. */
     WATCH_MID: 0.2,
     /** Watch with completion < 50%. Mild negative signal - user skipped. */
     WATCH_LOW: -0.1,

@@ -107,7 +107,7 @@ export class AffinityUpdateWorker extends WorkerHost {
      * Returns null for unrecognised event types.
      *
      * @param eventType Event name string from the job payload.
-     * @param completion_pct Optional watch completion percentage (0–100).
+     * @param completion_pct Optional watch completion percentage (0-100).
      * @returns Numeric delta or null if event type is unrecognised.
      */
     private resolveDelta(

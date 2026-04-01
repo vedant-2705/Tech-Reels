@@ -67,7 +67,7 @@ export interface ReelAvgCompletion {
 }
 
 /**
- * Reel–tag association pair returned by getReelTagIds.
+ * Reel-tag association pair returned by getReelTagIds.
  * Used by AffinityUpdateWorker to know which tags to update.
  */
 export interface ReelTagPair {
@@ -243,7 +243,7 @@ export class FeedRepository {
     }
 
     /**
-     * Fetch reel–tag associations for a batch of reels.
+     * Fetch reel-tag associations for a batch of reels.
      * Used by AffinityUpdateWorker to determine which tags to update
      * when a user interacts with a reel.
      *
@@ -392,7 +392,7 @@ export class FeedRepository {
     // -------------------------------------------------------------------------
 
     /**
-     * Upsert an affinity score delta for a user–tag pair.
+     * Upsert an affinity score delta for a user-tag pair.
      * On insert: initialises score to max(0, min(10, 0 + delta)).
      * On conflict: adds delta to existing score, clamped to [0.0, 10.0].
      * Floor and ceiling are enforced in the DB via GREATEST/LEAST.

@@ -97,7 +97,7 @@ export class PublicProfileResponseDto {
     @ApiProperty({
         example: 0.87,
         description:
-            "Challenge accuracy rate (0.0–1.0). Only present in token-based profile view.",
+            "Challenge accuracy rate (0.0-1.0). Only present in token-based profile view.",
         required: false,
     })
     accuracy_rate?: number;

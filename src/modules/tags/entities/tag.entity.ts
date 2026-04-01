@@ -9,7 +9,7 @@
 /**
  * Represents a single tag row as returned from the database.
  *
- * Schema reference (migration 001–012, tags table):
+ * Schema reference (migration 001-012, tags table):
  *   id          UUID PRIMARY KEY
  *   name        VARCHAR(50) UNIQUE NOT NULL
  *   category    VARCHAR(30) NOT NULL  (no DB CHECK - validated in DTO)

@@ -702,7 +702,7 @@ export class ReelsService {
         );
     }
 
-    // Endpoints 9–10 - Like / Unlike
+    // Endpoints 9-10 - Like / Unlike
 
     /**
      * Like a reel. Silently idempotent (ON CONFLICT DO NOTHING).
@@ -777,7 +777,7 @@ export class ReelsService {
         return { liked: false };
     }
 
-    // Endpoints 11–12 - Save / Unsave
+    // Endpoints 11-12 - Save / Unsave
 
     /**
      * Save a reel. Silently idempotent.
