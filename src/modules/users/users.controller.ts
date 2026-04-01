@@ -55,6 +55,7 @@ import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { SetRateLimit } from "../../common/guards/rate-limit.guard";
 import { RateLimitGuard } from "../../common/guards/rate-limit.guard";
 import { USERS_RATE_LIMITS } from "./users.constants";
+import { LeaderboardResponseDto } from "./dto/leaderboard-response.dto";
 
 /**
  * Thin transport layer for all user profile use cases.
@@ -550,6 +551,69 @@ export class UsersController {
         @CurrentUser("userId") userId: string,
     ): Promise<StatsResponseDto> {
         return this.usersService.getStats(userId);
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /users/me/leaderboard
+    // -----------------------------------------------------------------------
+
+    /**
+     * Return the weekly leaderboard for the user's top affinity tag, or a
+     * specific tag if tag_id is provided.
+     *
+     * @param userId Authenticated user UUID from JWT context.
+     * @param tagId Optional tag UUID to view a specific leaderboard.
+     * @param limitRaw Number of top entries to return. Default 20, max 50.
+     * @returns Top N leaderboard entries with user's own rank in meta.
+     */
+    @Get("me/leaderboard")
+    @HttpCode(HttpStatus.OK)
+    @ApiBearerAuth("access-token")
+    @SetRateLimit(USERS_RATE_LIMITS.LEADERBOARD)
+    @UseGuards(RateLimitGuard)
+    @ApiOperation({
+        summary: "Get weekly leaderboard",
+        description:
+            "Returns the weekly XP leaderboard for the user's top affinity tag. " +
+            "Pass tag_id to view a specific tag leaderboard instead. " +
+            "Returns the requesting user's own rank and score in the meta block. " +
+            "Rate limited to 60 requests per hour per user.",
+    })
+    @ApiQuery({
+        name: "tag_id",
+        required: false,
+        description:
+            "Tag UUID to view. Defaults to the user's top affinity tag.",
+        example: "019501a0-0000-7000-8000-000000000001",
+    })
+    @ApiQuery({
+        name: "limit",
+        required: false,
+        description: "Number of top entries. Default 20, max 50.",
+        example: 20,
+    })
+    @ApiResponse({
+        status: 200,
+        description: "Leaderboard returned.",
+        type: LeaderboardResponseDto,
+    })
+    @ApiResponse({
+        status: 401,
+        description: "Unauthorized.",
+        type: ApiErrorDto,
+    })
+    @ApiResponse({
+        status: 429,
+        description: "Rate limit exceeded.",
+        type: ApiErrorDto,
+    })
+    async getLeaderboard(
+        @CurrentUser("userId") userId: string,
+        @Query("tag_id") tagId?: string,
+        @Query("limit") limitRaw?: string,
+    ): Promise<LeaderboardResponseDto> {
+        const limit = Math.min(limitRaw ? parseInt(limitRaw, 10) : 20, 50);
+        return this.usersService.getLeaderboard(userId, tagId, limit);
     }
 
     // -----------------------------------------------------------------------

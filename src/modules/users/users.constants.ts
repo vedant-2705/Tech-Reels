@@ -12,6 +12,9 @@
 export const USERS_REDIS_KEYS = {
     AVATAR_PENDING_PREFIX: "avatar_pending",
     FEED_QUEUE_PREFIX: "feed_queue",
+    TOP_TAGS_PREFIX: "top_tags",
+    LEADERBOARD_PREFIX: "leaderboard:weekly",
+    TOP_TAGS_TTL: 3600,
 } as const;
 
 /**
@@ -44,12 +47,13 @@ export const USERS_MODULE_CONSTANTS = {
  * Applied via @SetRateLimit() + @UseGuards(RateLimitGuard).
  */
 export const USERS_RATE_LIMITS = {
-    PROFILE_UPDATE: { limit: 10, windowSeconds: 3600, scope: 'user' as const },
-    ONBOARDING: { limit: 5, windowSeconds: 3600, scope: 'user' as const },
-    AVATAR: { limit: 5, windowSeconds: 3600, scope: 'user' as const },
-    DEACTIVATE: { limit: 3, windowSeconds: 3600, scope: 'user' as const },
-    PUBLIC_TOKEN: { limit: 5, windowSeconds: 3600, scope: 'user' as const },
-    PUBLIC_PROFILE: { limit: 30, windowSeconds: 3600, scope: 'ip' as const },
+    PROFILE_UPDATE: { limit: 10, windowSeconds: 3600, scope: "user" as const },
+    ONBOARDING: { limit: 5, windowSeconds: 3600, scope: "user" as const },
+    AVATAR: { limit: 5, windowSeconds: 3600, scope: "user" as const },
+    DEACTIVATE: { limit: 3, windowSeconds: 3600, scope: "user" as const },
+    PUBLIC_TOKEN: { limit: 5, windowSeconds: 3600, scope: "user" as const },
+    PUBLIC_PROFILE: { limit: 30, windowSeconds: 3600, scope: "ip" as const },
+    LEADERBOARD: { limit: 60, windowSeconds: 3600, scope: "user" as const },
 } as const;
 
 /**

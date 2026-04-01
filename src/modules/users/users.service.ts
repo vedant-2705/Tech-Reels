@@ -63,6 +63,7 @@ import {
 
 import { buildAvatarKey } from "./utils/build-avatar-key.util";
 import { ConfigService } from "@nestjs/config";
+import { LeaderboardResponseDto } from "./dto/leaderboard-response.dto";
 
 /**
  * Coordinates all user profile use cases, side effects, and cross-module
@@ -330,7 +331,10 @@ export class UsersService {
             }
         }
 
-        await this.usersRepository.setAccountStatus(userId, USERS_ACCOUNT_STATUSES.DEACTIVATED);
+        await this.usersRepository.setAccountStatus(
+            userId,
+            USERS_ACCOUNT_STATUSES.DEACTIVATED,
+        );
 
         // Revoke all sessions and invalidate existing JWTs.
         await this.authSessionService.revokeAllSessions(userId);
@@ -423,19 +427,23 @@ export class UsersService {
             reels_watched,
             challengeStats,
             paths_completed,
-            leaderboard_rank,
+            topTagId,
         ] = await Promise.all([
             this.usersRepository.findById(userId),
             this.usersRepository.getBadgeCount(userId),
             this.usersRepository.getReelsWatchedCount(userId),
             this.usersRepository.getChallengeStats(userId),
             this.usersRepository.getPathsCompletedCount(userId),
-            this.usersRepository.getLeaderboardRank(userId),
+            this.usersRepository.getTopTagId(userId),
         ]);
 
         if (!user) {
             throw new UnauthorizedException();
         }
+
+        const leaderboard_rank = topTagId
+            ? await this.usersRepository.getLeaderboardRank(userId, topTagId)
+            : null;
 
         return {
             total_xp: user.total_xp,
@@ -448,7 +456,80 @@ export class UsersService {
             challenges_correct: challengeStats.total_correct,
             accuracy_rate: challengeStats.accuracy_rate,
             paths_completed,
-            leaderboard_rank,
+            leaderboard_rank: leaderboard_rank !== null ? leaderboard_rank + 1 : null, // convert 0-based to 1-based rank
+        };
+    }
+
+    /**
+     * Return the weekly leaderboard for a tag with the requesting user's
+     * own rank in the meta block. If tag_id is not provided, auto-resolves
+     * the user's top affinity tag with DB fallback.
+     *
+     * @param userId Authenticated user UUID.
+     * @param tagId Optional tag UUID override. Defaults to user's top tag.
+     * @param limit Number of top entries to return. Default 20, max 50.
+     * @returns Leaderboard entries with user rank/score in meta.
+     */
+    async getLeaderboard(
+        userId: string,
+        tagId: string | undefined,
+        limit: number,
+    ): Promise<LeaderboardResponseDto> {
+        // Resolve tag - explicit override or auto top-tag with DB fallback
+        const resolvedTagId =
+            tagId ?? (await this.usersRepository.getTopTagId(userId));
+        if (!resolvedTagId) {
+            // User has no affinity data at all - return empty leaderboard
+            return {
+                data: [],
+                meta: {
+                    tag_id: "",
+                    tag_name: "",
+                    user_rank: null,
+                    user_score: null,
+                    total_on_board: 0,
+                },
+            };
+        }
+
+        // Fetch all leaderboard data in parallel
+        const [topEntries, userRank0Based, userScore, totalOnBoard, tagName] =
+            await Promise.all([
+                this.usersRepository.getLeaderboardTopEntries(
+                    resolvedTagId,
+                    limit,
+                ),
+                this.usersRepository.getLeaderboardRank(userId, resolvedTagId),
+                this.usersRepository.getLeaderboardUserScore(
+                    resolvedTagId,
+                    userId,
+                ),
+                this.usersRepository.getLeaderboardSize(resolvedTagId),
+                this.usersRepository.getTagName(resolvedTagId),
+            ]);
+
+        // Resolve usernames for top entries in one DB query
+        const userIds = topEntries.map((e) => e.userId);
+        const usernameMap =
+            await this.usersRepository.getUsernamesByIds(userIds);
+
+        // Build data array - rank is 1-based
+        const data = topEntries.map((entry, index) => ({
+            rank: index + 1,
+            username: usernameMap.get(entry.userId) ?? "unknown",
+            score: entry.score,
+        }));
+
+        // Build meta - convert 0-based ZREVRANK to 1-based for the response
+        return {
+            data,
+            meta: {
+                tag_id: resolvedTagId,
+                tag_name: tagName ?? "",
+                user_rank: userRank0Based !== null ? userRank0Based + 1 : null,
+                user_score: userScore,
+                total_on_board: totalOnBoard,
+            },
         };
     }
 
@@ -466,7 +547,8 @@ export class UsersService {
     async generatePublicToken(
         userId: string,
     ): Promise<{ public_profile_token: string; public_profile_url: string }> {
-        const baseUrl = this.config.get<string>('API_BASE_URL') ?? 'http://localhost:3000';
+        const baseUrl =
+            this.config.get<string>("API_BASE_URL") ?? "http://localhost:3000";
         const token = crypto.randomBytes(32).toString("hex");
         await this.usersRepository.setPublicProfileToken(userId, token);
         return {

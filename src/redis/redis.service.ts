@@ -220,6 +220,55 @@ export class RedisService implements OnModuleDestroy {
     }
 
     /**
+     * Return top N members from a sorted set by rank, highest score first,
+     * with their scores interleaved. Uses modern ZRANGE REV with index range.
+     *
+     * @param key Redis key.
+     * @param count Number of top entries to return.
+     * @returns Alternating [member, score, member, score, ...] array.
+     */
+    async zrangeRevWithScores(key: string, count: number): Promise<string[]> {
+        try {
+            const result = (await this.client.call(
+                "ZRANGE",
+                key,
+                "0",
+                String(count - 1),
+                "REV",
+                "WITHSCORES",
+            )) as string[];
+            return result ?? [];
+        } catch (err) {
+            console.warn(
+                `[RedisService] zrangeRevWithScores failed for key "${key}":`,
+                (err as Error).message,
+            );
+            return [];
+        }
+    }
+
+    /**
+     * Return the number of members in a sorted set.
+     *
+     * @param key Redis key.
+     * @returns Member count. Returns 0 if key does not exist.
+     */
+    async zcard(key: string): Promise<number> {
+        return this.client.zcard(key);
+    }
+
+    /**
+     * Return the score of a member in a sorted set.
+     *
+     * @param key Redis key.
+     * @param member Member to look up.
+     * @returns Score as a string, or null if member does not exist.
+     */
+    async zscore(key: string, member: string): Promise<string | null> {
+        return this.client.zscore(key, member);
+    }
+
+    /**
      * Read members from a sorted set in descending score order.
      * Uses ZRANGE ... BYSCORE REV -f modern replacement for deprecated ZREVRANGEBYSCORE.
      * Returns members with scores between +inf and -inf (i.e. all members),

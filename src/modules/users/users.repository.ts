@@ -12,7 +12,10 @@ import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
 import { User } from "@modules/auth/entities/user.entity";
 import { USERS_REDIS_KEYS } from "./users.constants";
-import { LEADERBOARD_WEEKLY_KEY_PREFIX, TOP_TAGS_KEY_PREFIX } from "@common/constants/redis-keys.constants";
+import {
+    LEADERBOARD_WEEKLY_KEY_PREFIX,
+    TOP_TAGS_KEY_PREFIX,
+} from "@common/constants/redis-keys.constants";
 
 // ---------------------------------------------------------------------------
 // Local domain types returned by repository methods
@@ -512,27 +515,187 @@ export class UsersRepository {
      * @param userId User UUID.
      * @returns 0-based rank integer, or null if not ranked or no top tag.
      */
-    async getLeaderboardRank(userId: string): Promise<number | null> {
-        const topTagsRaw = await this.redis.get(`${TOP_TAGS_KEY_PREFIX}:${userId}`);
-        if (!topTagsRaw) return null;
+    // async getLeaderboardRank(userId: string): Promise<number | null> {
+    //     const topTagsRaw = await this.redis.get(`${TOP_TAGS_KEY_PREFIX}:${userId}`);
+    //     if (!topTagsRaw) return null;
 
-        // topTagsRaw is expected to be a JSON array of tag IDs ordered by score
-        let tagIds: string[];
-        try {
-            tagIds = JSON.parse(topTagsRaw) as string[];
-        } catch {
-            return null;
+    //     // topTagsRaw is expected to be a JSON array of tag IDs ordered by score
+    //     let tagIds: string[];
+    //     try {
+    //         tagIds = JSON.parse(topTagsRaw) as string[];
+    //     } catch {
+    //         return null;
+    //     }
+
+    //     const topTagId = tagIds[0];
+    //     if (!topTagId) return null;
+
+    //     const rank = await this.redis.zrevrank(
+    //         `${LEADERBOARD_WEEKLY_KEY_PREFIX}:${topTagId}`,
+    //         userId,
+    //     );
+
+    //     return rank ?? null;
+    // }
+
+    /**
+     * Resolve the user's top affinity tag ID. Reads from top_tags:{userId}
+     * cache first. On cache miss, falls back to user_topic_affinity table,
+     * then re-caches the result for 1 hour.
+     *
+     * @param userId User UUID.
+     * @returns Top tag ID string, or null if the user has no affinity data.
+     */
+    async getTopTagId(userId: string): Promise<string | null> {
+        // 1. Try cache first
+        const cached = await this.redis.get(
+            `${USERS_REDIS_KEYS.TOP_TAGS_PREFIX}:${userId}`,
+        );
+        if (cached) {
+            try {
+                const tagIds = JSON.parse(cached) as string[];
+                return tagIds[0] ?? null;
+            } catch {
+                // corrupted cache - fall through to DB
+            }
         }
 
-        const topTagId = tagIds[0];
-        if (!topTagId) return null;
-
-        const rank = await this.redis.zrevrank(
-            `${LEADERBOARD_WEEKLY_KEY_PREFIX}:${topTagId}`,
-            userId,
+        // 2. Cache miss - fall back to DB
+        const result = await this.db.query<{ tag_id: string }>(
+            `SELECT tag_id
+         FROM user_topic_affinity
+         WHERE user_id = $1
+         ORDER BY score DESC
+         LIMIT 5`,
+            [userId],
         );
 
+        if (!result.rows.length) return null;
+
+        const tagIds = result.rows.map((r) => r.tag_id);
+
+        // 3. Re-populate cache so next call is fast
+        await this.redis.set(
+            `${USERS_REDIS_KEYS.TOP_TAGS_PREFIX}:${userId}`,
+            JSON.stringify(tagIds),
+            USERS_REDIS_KEYS.TOP_TAGS_TTL,
+        );
+
+        return tagIds[0];
+    }
+
+    /**
+     * Resolve the user's weekly leaderboard rank for a given tag.
+     * Returns 0-based rank from Redis ZREVRANK, or null if not ranked.
+     *
+     * @param userId User UUID.
+     * @param tagId Tag UUID to look up rank for.
+     * @returns 0-based rank integer, or null if not on leaderboard.
+     */
+    async getLeaderboardRank(
+        userId: string,
+        tagId: string,
+    ): Promise<number | null> {
+        console.log(tagId);
+        const rank = await this.redis.zrevrank(
+            `${USERS_REDIS_KEYS.LEADERBOARD_PREFIX}:${tagId}`,
+            userId,
+        );
+        console.log(rank);
         return rank ?? null;
+    }
+
+    /**
+     * Fetch the top N entries from the weekly leaderboard for a tag.
+     * Returns member + score pairs ordered by score DESC.
+     * ZRANGE with REV and WITHSCORES - members are userIds.
+     *
+     * @param tagId Tag UUID.
+     * @param limit Number of top entries to return.
+     * @returns Array of { userId, score } pairs.
+     */
+    async getLeaderboardTopEntries(
+        tagId: string,
+        limit: number,
+    ): Promise<{ userId: string; score: number }[]> {
+        // returns [member, score, member, score, ...]
+        const raw = await this.redis.zrangeRevWithScores(
+            `${USERS_REDIS_KEYS.LEADERBOARD_PREFIX}:${tagId}`,
+            limit - 1,
+        );
+
+        // raw is alternating [userId, score, userId, score, ...]
+        const entries: { userId: string; score: number }[] = [];
+        for (let i = 0; i < raw.length; i += 2) {
+            entries.push({
+                userId: raw[i],
+                score: parseFloat(raw[i + 1]),
+            });
+        }
+        return entries;
+    }
+
+    /**
+     * Get the total number of members on a leaderboard.
+     *
+     * @param tagId Tag UUID.
+     * @returns Member count.
+     */
+    async getLeaderboardSize(tagId: string): Promise<number> {
+        return this.redis.zcard(
+            `${USERS_REDIS_KEYS.LEADERBOARD_PREFIX}:${tagId}`,
+        );
+    }
+
+    /**
+     * Get the weekly XP score for a specific user on a tag leaderboard.
+     *
+     * @param tagId Tag UUID.
+     * @param userId User UUID.
+     * @returns Score as number, or null if not on leaderboard.
+     */
+    async getLeaderboardUserScore(
+        tagId: string,
+        userId: string,
+    ): Promise<number | null> {
+        const score = await this.redis.zscore(
+            `${USERS_REDIS_KEYS.LEADERBOARD_PREFIX}:${tagId}`,
+            userId,
+        );
+        return score !== null ? parseFloat(score) : null;
+    }
+
+    /**
+     * Fetch usernames for a list of user IDs in a single query.
+     *
+     * @param userIds Array of user UUIDs.
+     * @returns Map of userId -> username.
+     */
+    async getUsernamesByIds(userIds: string[]): Promise<Map<string, string>> {
+        if (!userIds.length) return new Map();
+
+        const result = await this.db.query<{ id: string; username: string }>(
+            `SELECT id, username
+         FROM users
+         WHERE id = ANY($1) AND deleted_at IS NULL`,
+            [userIds],
+        );
+
+        return new Map(result.rows.map((r) => [r.id, r.username]));
+    }
+
+    /**
+     * Fetch the tag name for a given tag ID.
+     *
+     * @param tagId Tag UUID.
+     * @returns Tag name string, or null if not found.
+     */
+    async getTagName(tagId: string): Promise<string | null> {
+        const result = await this.db.query<{ name: string }>(
+            `SELECT name FROM tags WHERE id = $1`,
+            [tagId],
+        );
+        return result.rows[0]?.name ?? null;
     }
 
     /**
