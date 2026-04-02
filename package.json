@@ -97,6 +97,18 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "transformIgnorePatterns": [
+      "node_modules/(?!(uuid)/)"
+    ],
+    "moduleNameMapper": {
+      "^@common/(.*)$": "<rootDir>/common/$1",
+      "^@config/(.*)$": "<rootDir>/config/$1",
+      "^@database/(.*)$": "<rootDir>/database/$1",
+      "^@redis/(.*)$": "<rootDir>/redis/$1",
+      "^@queues/(.*)$": "<rootDir>/queues/$1",
+      "^@modules/(.*)$": "<rootDir>/modules/$1",
+      "^@s3/(.*)$": "<rootDir>/s3/$1"
+    }
   }
 }
