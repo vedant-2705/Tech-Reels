@@ -29,6 +29,7 @@ import { GamificationModule } from "@modules/gamification/gamification.module";
 import { FeedModule } from "@modules/feed/feed.module";
 import { SkillPathsModule } from "@modules/skill-paths/skill-paths.module";
 import { AdminModule } from "@modules/admin/admin.module";
+import { NotificationModule } from "@modules/notification/notification.module";
 
 @Module({
     imports: [
@@ -83,6 +84,7 @@ import { AdminModule } from "@modules/admin/admin.module";
         FeedModule,
         SkillPathsModule,
         AdminModule,
+        NotificationModule,
     ],
 })
 export class AppModule {}
