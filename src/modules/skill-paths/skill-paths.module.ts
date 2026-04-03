@@ -20,14 +20,15 @@
 
 import { Module } from "@nestjs/common";
 import { SkillPathsController } from "./skill-paths.controller";
-import { SkillPathsService } from "./skill-paths.service";
+import { SkillPathsService } from "./skill-paths.service.abstract";
+import { SkillPathsServiceImpl } from "./skill-paths.service";
 import { SkillPathsRepository } from "./skill-paths.repository";
 import { VideoTelemetrySubscriber } from "./subscribers/video-telemetry.subscriber";
 
 @Module({
     controllers: [SkillPathsController],
     providers: [
-        SkillPathsService,
+        { provide: SkillPathsService, useClass: SkillPathsServiceImpl },
         SkillPathsRepository,
         VideoTelemetrySubscriber,
     ],

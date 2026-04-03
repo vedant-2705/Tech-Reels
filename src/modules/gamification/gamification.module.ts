@@ -32,7 +32,8 @@ import { DatabaseModule } from "@database/database.module";
 import { RedisModule } from "@redis/redis.module";
 
 import { GamificationRepository } from "./gamification.repository";
-import { GamificationService } from "./gamification.service";
+import { GamificationService } from "./gamification.service.abstract";
+import { GamificationServiceImpl } from "./gamification.service";
 
 import { XpAwardWorker } from "./workers/xp-award.worker";
 import { BadgeEvaluationWorker } from "./workers/badge-evaluation.worker";
@@ -46,7 +47,7 @@ import { GamificationSubscriber } from "./subscribers/gamification.subscriber";
     providers: [
         // Core
         GamificationRepository,
-        GamificationService,
+        { provide: GamificationService, useClass: GamificationServiceImpl },
 
         // BullMQ workers - @Processor() binds each to its queue.
         // QueuesModule (@Global) makes @InjectQueue() resolvable here

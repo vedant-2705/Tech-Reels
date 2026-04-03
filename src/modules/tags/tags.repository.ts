@@ -14,6 +14,7 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import { Tag } from "./entities/tag.entity";
 import { TAGS_CACHE_TTL, TAGS_REDIS_KEYS } from "./tags.constants";
 
@@ -53,17 +54,20 @@ interface UpdateTagData {
 
 /**
  * Repository for tag persistence and cache management.
+ * Extends BaseRepository for typed query helpers and cache primitives.
  */
 @Injectable()
-export class TagsRepository {
+export class TagsRepository extends BaseRepository {
     /**
      * @param db  PostgreSQL database service.
      * @param redis Redis service for tag cache storage.
      */
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     // -------------------------------------------------------------------
     // DB methods 
@@ -77,14 +81,13 @@ export class TagsRepository {
      * @returns Array of Tag rows (may be empty).
      */
     async findAll(category?: string): Promise<Tag[]> {
-        const result = await this.db.query<Tag>(
+        return await this.findMany<Tag>(
             `SELECT id, name, category, created_at, updated_at
              FROM tags
              WHERE ($1::text IS NULL OR category = $1)
              ORDER BY category, name ASC`,
             [category ?? null],
         );
-        return result.rows;
     }
 
     /**
@@ -94,13 +97,12 @@ export class TagsRepository {
      * @returns Matching Tag or null if not found.
      */
     async findById(id: string): Promise<Tag | null> {
-        const result = await this.db.query<Tag>(
+        return await this.findOne<Tag>(
             `SELECT id, name, category, created_at, updated_at
              FROM tags
              WHERE id = $1`,
             [id],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -111,13 +113,10 @@ export class TagsRepository {
      * @returns true if a tag with this name exists.
      */
     async existsByName(name: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-                SELECT 1 FROM tags WHERE name = $1
-             ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM tags WHERE name = $1) AS exists`,
             [name],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -133,14 +132,10 @@ export class TagsRepository {
         name: string,
         excludeId: string,
     ): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-                SELECT 1 FROM tags
-                WHERE name = $1 AND id != $2
-             ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM tags WHERE name = $1 AND id != $2) AS exists`,
             [name, excludeId],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -190,7 +185,7 @@ export class TagsRepository {
      * @returns Number of active reels associated with this tag.
      */
     async getReelCountForTag(tagId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count
              FROM reel_tags rt
              JOIN reels r ON r.id = rt.reel_id
@@ -199,7 +194,7 @@ export class TagsRepository {
                AND r.deleted_at IS NULL`,
             [tagId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -216,7 +211,7 @@ export class TagsRepository {
     ): Promise<Array<{ tag_id: string; reel_count: number }>> {
         if (tagIds.length === 0) return [];
 
-        const result = await this.db.query<ReelCountRow>(
+        const rows = await this.findMany<ReelCountRow>(
             `SELECT rt.tag_id, COUNT(*) AS reel_count
              FROM reel_tags rt
              JOIN reels r ON r.id = rt.reel_id
@@ -228,7 +223,7 @@ export class TagsRepository {
         );
 
         // pg returns COUNT as a string - normalise to number here
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             tag_id: row.tag_id,
             reel_count: parseInt(row.reel_count, 10),
         }));
@@ -246,15 +241,7 @@ export class TagsRepository {
      * @returns Parsed array of enriched tags, or null on cache miss.
      */
     async getCachedTags(cacheKey: string): Promise<TagWithReelCount[] | null> {
-        const raw = await this.redis.get(cacheKey);
-        if (raw === null) return null;
-
-        try {
-            return JSON.parse(raw) as TagWithReelCount[];
-        } catch {
-            // Corrupt cache entry - treat as miss
-            return null;
-        }
+        return this.cacheGet<TagWithReelCount[]>(cacheKey);
     }
 
     /**
@@ -268,11 +255,7 @@ export class TagsRepository {
         cacheKey: string,
         tags: TagWithReelCount[],
     ): Promise<void> {
-        await this.redis.set(
-            cacheKey,
-            JSON.stringify(tags),
-            TAGS_CACHE_TTL.TAGS_LIST,
-        );
+        await this.cacheSet(cacheKey, tags, TAGS_CACHE_TTL.TAGS_LIST);
     }
 
     /**
@@ -283,11 +266,26 @@ export class TagsRepository {
      */
     async invalidateTagCache(categories: string[]): Promise<void> {
         const keysToDelete: string[] = [TAGS_REDIS_KEYS.ALL];
-
         for (const category of categories) {
             keysToDelete.push(`${TAGS_REDIS_KEYS.CATEGORY_PREFIX}:${category}`);
         }
-
         await this.redis.del(...keysToDelete);
+    }
+
+    /**
+     * Returns only the IDs that actually exist in the tags table.
+     * Used for tag validation across AuthService, UsersService, ReelsService
+     * via the TagValidator abstraction.
+     *
+     * @param tagIds Candidate tag UUIDs.
+     * @returns Subset of tagIds that exist in persistence.
+     */
+    async validateIds(tagIds: string[]): Promise<string[]> {
+        if (tagIds.length === 0) return [];
+        const rows = await this.findMany<{ id: string }>(
+            `SELECT id FROM tags WHERE id = ANY($1)`,
+            [tagIds],
+        );
+        return rows.map((r) => r.id);
     }
 }

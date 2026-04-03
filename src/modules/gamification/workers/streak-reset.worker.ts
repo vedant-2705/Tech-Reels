@@ -22,7 +22,7 @@
 import { Processor, WorkerHost, InjectQueue } from "@nestjs/bullmq";
 import { Logger, OnModuleInit } from "@nestjs/common";
 import { Job, Queue } from "bullmq";
-import { GamificationService } from "../gamification.service";
+import { GamificationService } from "../gamification.service.abstract";
 import { QUEUES } from "@queues/queue-names";
 import {
     GAMIFICATION_STREAK_JOBS,

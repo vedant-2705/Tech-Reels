@@ -48,6 +48,7 @@ import {
 } from "./admin.constants";
 
 import { REELS_REDIS_KEYS } from "@modules/reels/reels.constants";
+import { BaseRepository } from "@database/base.repository";
 
 /** Input shape for searchUsers. */
 export interface SearchUsersQuery {
@@ -98,7 +99,7 @@ export interface CreateChallengeData {
  * Repository handling all persistence and cache operations for the Admin module.
  */
 @Injectable()
-export class AdminRepository {
+export class AdminRepository extends BaseRepository {
     private readonly logger = new Logger(AdminRepository.name);
 
     /**
@@ -106,9 +107,11 @@ export class AdminRepository {
      * @param redis Redis service for cache invalidation.
      */
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     //  User methods 
 
@@ -119,7 +122,7 @@ export class AdminRepository {
      * @returns AdminUserRow or null if not found.
      */
     async findUserById(userId: string): Promise<AdminUserRow | null> {
-        const result = await this.db.query<AdminUserRow>(
+        return await this.findOne<AdminUserRow>(
             `SELECT id, email, username, avatar_url, bio, role, account_status,
                     experience_level, total_xp, token_balance, current_streak,
                     longest_streak, created_at, updated_at, deleted_at, last_active_date
@@ -127,7 +130,6 @@ export class AdminRepository {
              WHERE id = $1`,
             [userId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -167,7 +169,7 @@ export class AdminRepository {
         const where =
             conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-        const result = await this.db.query<AdminUserListRow>(
+        return await this.findMany<AdminUserListRow>(
             `SELECT id, email, username, role, account_status, total_xp,
                     current_streak, created_at, last_active_date,
                     COUNT(*) OVER() AS total_count
@@ -177,7 +179,6 @@ export class AdminRepository {
              LIMIT $1`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -187,11 +188,11 @@ export class AdminRepository {
      * @returns Array of provider strings (e.g. ['google', 'github']).
      */
     async getLinkedProviders(userId: string): Promise<string[]> {
-        const result = await this.db.query<{ provider: string }>(
+        const rows = await this.findMany<{ provider: string }>(
             `SELECT provider FROM oauth_accounts WHERE user_id = $1`,
             [userId],
         );
-        return result.rows.map((r) => r.provider);
+        return rows.map((r) => r.provider);
     }
 
     /**
@@ -204,20 +205,20 @@ export class AdminRepository {
      */
     async getUserStats(userId: string): Promise<AdminUserStats> {
         const [badges, reels, submitted, received] = await Promise.all([
-            this.db.query<{ count: string }>(
+            this.findOne<{ count: string }>(
                 `SELECT COUNT(*)::text AS count FROM user_badges WHERE user_id = $1`,
                 [userId],
             ),
-            this.db.query<{ count: string }>(
+            this.findOne<{ count: string }>(
                 `SELECT COUNT(*)::text AS count FROM reels
                  WHERE creator_id = $1 AND deleted_at IS NULL`,
                 [userId],
             ),
-            this.db.query<{ count: string }>(
+            this.findOne<{ count: string }>(
                 `SELECT COUNT(*)::text AS count FROM reports WHERE reporter_id = $1`,
                 [userId],
             ),
-            this.db.query<{ count: string }>(
+            this.findOne<{ count: string }>(
                 `SELECT COUNT(*)::text AS count FROM reports rp
                  JOIN reels r ON r.id = rp.reel_id
                  WHERE r.creator_id = $1`,
@@ -226,10 +227,10 @@ export class AdminRepository {
         ]);
 
         return {
-            badges_earned: parseInt(badges.rows[0]?.count ?? "0", 10),
-            reels_published: parseInt(reels.rows[0]?.count ?? "0", 10),
-            reports_submitted: parseInt(submitted.rows[0]?.count ?? "0", 10),
-            reports_received: parseInt(received.rows[0]?.count ?? "0", 10),
+            badges_earned: this.parseCount(badges?.count),
+            reels_published: this.parseCount(reels?.count),
+            reports_submitted: this.parseCount(submitted?.count),
+            reports_received: this.parseCount(received?.count),
         };
     }
 
@@ -264,7 +265,7 @@ export class AdminRepository {
      * @returns AdminReportRow or null if not found.
      */
     async findReportById(reportId: string): Promise<AdminReportRow | null> {
-        const result = await this.db.query<AdminReportRow>(
+        return await this.findOne<AdminReportRow>(
             `SELECT
                 rp.id, rp.reason, rp.details, rp.status,
                 rp.created_at, rp.reviewed_by, rp.reviewed_at,
@@ -282,7 +283,6 @@ export class AdminRepository {
              WHERE rp.id = $1`,
             [reportId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -314,7 +314,7 @@ export class AdminRepository {
         const where =
             conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-        const result = await this.db.query<AdminReportRow>(
+        return await this.findMany<AdminReportRow>(
             `SELECT
                 rp.id, rp.reason, rp.details, rp.status,
                 rp.created_at, rp.reviewed_by, rp.reviewed_at,
@@ -334,7 +334,6 @@ export class AdminRepository {
              LIMIT $1`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -372,7 +371,7 @@ export class AdminRepository {
      * @returns AdminReelRow or null if not found.
      */
     async findAdminReelById(reelId: string): Promise<AdminReelRow | null> {
-        const result = await this.db.query<AdminReelRow>(
+        return await this.findOne<AdminReelRow>(
             `SELECT id, creator_id, title, status, difficulty,
                     view_count, like_count, save_count, share_count,
                     created_at, updated_at, deleted_at
@@ -380,7 +379,6 @@ export class AdminRepository {
              WHERE id = $1`,
             [reelId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -424,13 +422,13 @@ export class AdminRepository {
      * @returns Number of active challenges.
      */
     async getChallengeCount(reelId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*)::text AS count
              FROM challenges
              WHERE reel_id = $1 AND deleted_at IS NULL`,
             [reelId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -486,12 +484,11 @@ export class AdminRepository {
         challengeId: string,
         reelId: string,
     ): Promise<AdminChallengeRow | null> {
-        const result = await this.db.query<AdminChallengeRow>(
+        return await this.findOne<AdminChallengeRow>(
             `SELECT * FROM challenges
              WHERE id = $1 AND reel_id = $2 AND deleted_at IS NULL`,
             [challengeId, reelId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -508,10 +505,7 @@ export class AdminRepository {
         challengeId: string,
         reelId: string,
     ): Promise<void> {
-        const client = await this.db.getClient();
-        try {
-            await client.query("BEGIN");
-
+        return await this.db.withTransaction(async (client) => {
             await client.query(
                 `UPDATE challenges
                  SET deleted_at = now(), updated_at = now()
@@ -533,14 +527,7 @@ export class AdminRepository {
                  WHERE challenges.id = ranked.id`,
                 [reelId],
             );
-
-            await client.query("COMMIT");
-        } catch (err) {
-            await client.query("ROLLBACK");
-            throw err;
-        } finally {
-            client.release();
-        }
+        });
     }
 
     //  Analytics methods 
@@ -553,7 +540,7 @@ export class AdminRepository {
      * @returns UserCountStats with string-typed numeric fields.
      */
     async getUserCountStats(): Promise<UserCountStats> {
-        const result = await this.db.query<UserCountStats>(
+        const result = await this.findOne<UserCountStats>(
             `SELECT
                 COUNT(*)::text                                                          AS total,
                 COUNT(*) FILTER (WHERE last_active_date = CURRENT_DATE)::text          AS active_today,
@@ -561,8 +548,9 @@ export class AdminRepository {
                 COUNT(*) FILTER (WHERE account_status = 'suspended')::text             AS suspended,
                 COUNT(*) FILTER (WHERE account_status = 'banned')::text                AS banned
              FROM users`,
+            [],
         );
-        return result.rows[0];
+        return result!;
     }
 
     /**
@@ -572,7 +560,7 @@ export class AdminRepository {
      * @returns ReelCountStats with string-typed numeric fields.
      */
     async getReelCountStats(): Promise<ReelCountStats> {
-        const result = await this.db.query<ReelCountStats>(
+        const result = await this.findOne<ReelCountStats>(
             `SELECT
                 COUNT(*)::text                                                   AS total,
                 COUNT(*) FILTER (WHERE status = 'active')::text                 AS active,
@@ -580,8 +568,9 @@ export class AdminRepository {
                 COUNT(*) FILTER (WHERE status = 'disabled')::text               AS disabled,
                 COUNT(*) FILTER (WHERE status = 'needs_review')::text           AS pending_review
              FROM reels`,
+            [],
         );
-        return result.rows[0];
+        return result!;
     }
 
     /**
@@ -591,7 +580,7 @@ export class AdminRepository {
      * @returns ChallengeGlobalStats with string-typed numeric fields.
      */
     async getChallengeGlobalStats(): Promise<ChallengeGlobalStats> {
-        const result = await this.db.query<ChallengeGlobalStats>(
+        const result = await this.findOne<ChallengeGlobalStats>(
             `SELECT
                 (SELECT COUNT(*)::text FROM challenges WHERE deleted_at IS NULL) AS total,
                 COUNT(*)::text                                                    AS total_attempts,
@@ -604,8 +593,9 @@ export class AdminRepository {
                     0
                 )::text AS correct_rate
              FROM challenges_attempts`,
+            [],
         );
-        return result.rows[0];
+        return result!;
     }
 
     /**
@@ -614,13 +604,14 @@ export class AdminRepository {
      * @returns ReportCountStats with string-typed numeric fields.
      */
     async getReportCountStats(): Promise<ReportCountStats> {
-        const result = await this.db.query<ReportCountStats>(
+        const result = await this.findOne<ReportCountStats>(
             `SELECT
                 COUNT(*) FILTER (WHERE status = 'pending')::text                        AS pending,
                 COUNT(*) FILTER (WHERE created_at >= now() - interval '7 days')::text   AS this_week
              FROM reports`,
+            [],
         );
-        return result.rows[0];
+        return result!;
     }
 
     /**
@@ -629,12 +620,13 @@ export class AdminRepository {
      * @returns DailyXpTotal with string-typed total_awarded_today.
      */
     async getDailyXpTotal(): Promise<DailyXpTotal> {
-        const result = await this.db.query<DailyXpTotal>(
+        const result = await this.findOne<DailyXpTotal>(
             `SELECT COALESCE(SUM(delta), 0)::text AS total_awarded_today
              FROM xp_ledger
              WHERE created_at >= CURRENT_DATE`,
+            [],
         );
-        return result.rows[0];
+        return result!;
     }
 
     /**
@@ -660,7 +652,7 @@ export class AdminRepository {
             periodCondition = `AND r.created_at >= now() - interval '7 days'`;
         }
 
-        const result = await this.db.query<TopReelRow>(
+        return await this.findMany<TopReelRow>(
             `SELECT
                 r.id,
                 r.title,
@@ -682,7 +674,6 @@ export class AdminRepository {
              LIMIT $1`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -698,7 +689,7 @@ export class AdminRepository {
     async getTopUsers(opts: GetTopUsersOpts): Promise<TopUserRow[]> {
         const sortCol = TOP_USERS_SORT_COLUMN[opts.sortBy];
 
-        const result = await this.db.query<TopUserRow>(
+        return await this.findMany<TopUserRow>(
             `SELECT
                 u.id,
                 u.username,
@@ -717,7 +708,6 @@ export class AdminRepository {
              LIMIT $1`,
             [opts.limit],
         );
-        return result.rows;
     }
 
     //  Audit log 

@@ -28,7 +28,7 @@ import {
     ApiTags,
 } from "@nestjs/swagger";
 
-import { ReelsService } from "./reels.service";
+import { ReelsService } from "./reels.service.abstract";
 
 import { CreateReelDto } from "./dto/create-reel.dto";
 import { ConfirmReelDto } from "./dto/confirm-reel.dto";

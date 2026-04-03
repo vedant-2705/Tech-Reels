@@ -7,13 +7,12 @@
  */
 
 import { Module } from "@nestjs/common";
-import { BullModule } from "@nestjs/bullmq";
 
 import { AuthModule } from "@modules/auth/auth.module";
 import { UsersController } from "./users.controller";
-import { UsersService } from "./users.service";
+import { UsersService } from "./users.service.abstract";
+import { UsersServiceImpl } from "./users.service";
 import { UsersRepository } from "./users.repository";
-import { QUEUES } from "@queues/queue-names";
 
 /**
  * Registers all users-module dependencies.
@@ -22,9 +21,11 @@ import { QUEUES } from "@queues/queue-names";
 @Module({
     imports: [
         AuthModule,
-        BullModule.registerQueue({ name: QUEUES.FEED_BUILD }),
     ],
     controllers: [UsersController],
-    providers: [UsersService, UsersRepository],
+    providers: [
+        { provide: UsersService, useClass: UsersServiceImpl },
+        UsersRepository,
+    ],
 })
 export class UsersModule {}

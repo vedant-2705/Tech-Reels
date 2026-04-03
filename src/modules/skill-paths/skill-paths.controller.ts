@@ -25,7 +25,7 @@ import {
     ApiTags,
 } from "@nestjs/swagger";
 
-import { SkillPathsService } from "./skill-paths.service";
+import { SkillPathsService } from "./skill-paths.service.abstract";
 
 import { CreatePathDto } from "./dto/create-path.dto";
 import { UpdatePathDto } from "./dto/update-path.dto";

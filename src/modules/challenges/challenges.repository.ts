@@ -19,6 +19,7 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import {
     Challenge,
     AttemptSummary,
@@ -47,15 +48,13 @@ interface ReelLookup extends Record<string, unknown> {
  * The service layer composes them via cache-aside logic.
  */
 @Injectable()
-export class ChallengesRepository {
-    /**
-     * @param db    PostgreSQL database service.
-     * @param redis Redis service for cache operations.
-     */
+export class ChallengesRepository extends BaseRepository {
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     // =========================================================================
     // DB - Reel lookup
@@ -69,14 +68,13 @@ export class ChallengesRepository {
      * @returns      { id, status } or null if not found / soft-deleted.
      */
     async findReelById(reelId: string): Promise<ReelLookup | null> {
-        const result = await this.db.query<ReelLookup>(
+        return await this.findOne<ReelLookup>(
             `SELECT id, status
              FROM   reels
              WHERE  id = $1
                AND  deleted_at IS NULL`,
             [reelId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -87,14 +85,13 @@ export class ChallengesRepository {
      * @returns      { id, status, creator_id } or null.
      */
     async findReelWithCreator(reelId: string): Promise<ReelLookup | null> {
-        const result = await this.db.query<ReelLookup>(
+        return await this.findOne<ReelLookup>(
             `SELECT id, status, creator_id
              FROM   reels
              WHERE  id = $1
                AND  deleted_at IS NULL`,
             [reelId],
         );
-        return result.rows[0] ?? null;
     }
 
     // =========================================================================
@@ -109,7 +106,7 @@ export class ChallengesRepository {
      * @returns      Ordered Challenge[] (may be empty).
      */
     async findByReelId(reelId: string): Promise<Challenge[]> {
-        const result = await this.db.query<Challenge>(
+        return await this.findMany<Challenge>(
             `SELECT id, reel_id, type, question, options, correct_answer,
                     explanation, difficulty, xp_reward, token_reward,
                     case_sensitive, "order", max_attempts,
@@ -120,7 +117,6 @@ export class ChallengesRepository {
              ORDER  BY "order" ASC`,
             [reelId],
         );
-        return result.rows;
     }
 
     /**
@@ -131,7 +127,7 @@ export class ChallengesRepository {
      * @returns           Challenge row or null if not found / soft-deleted.
      */
     async findById(challengeId: string): Promise<Challenge | null> {
-        const result = await this.db.query<Challenge>(
+        return await this.findOne<Challenge>(
             `SELECT id, reel_id, type, question, options, correct_answer,
                     explanation, difficulty, xp_reward, token_reward,
                     case_sensitive, "order", max_attempts,
@@ -141,7 +137,6 @@ export class ChallengesRepository {
                AND  deleted_at IS NULL`,
             [challengeId],
         );
-        return result.rows[0] ?? null;
     }
 
     // =========================================================================
@@ -162,7 +157,7 @@ export class ChallengesRepository {
     ): Promise<UserAttemptStatus[]> {
         if (challengeIds.length === 0) return [];
 
-        const result = await this.db.query<UserAttemptStatus>(
+        return await this.findMany<UserAttemptStatus>(
             `SELECT DISTINCT ON (challenge_id)
                     challenge_id, is_correct, submitted_answer, attempted_at
              FROM   challenges_attempts
@@ -171,7 +166,6 @@ export class ChallengesRepository {
              ORDER  BY challenge_id, attempted_at DESC`,
             [userId, challengeIds],
         );
-        return result.rows;
     }
 
     /**
@@ -185,7 +179,7 @@ export class ChallengesRepository {
         userId: string,
         challengeId: string,
     ): Promise<AttemptSummary> {
-        const result = await this.db.query<{
+        const row = await this.findOne<{
             attempt_count: string;
             has_correct: boolean;
         }>(
@@ -196,7 +190,6 @@ export class ChallengesRepository {
                AND  challenge_id = $2`,
             [userId, challengeId],
         );
-        const row = result.rows[0];
         return {
             attempt_count: parseInt(row?.attempt_count ?? "0", 10),
             has_correct: row?.has_correct ?? false,
@@ -214,7 +207,7 @@ export class ChallengesRepository {
         userId: string,
         challengeId: string,
     ): Promise<ChallengeAttempt[]> {
-        const result = await this.db.query<ChallengeAttempt>(
+        return await this.findMany<ChallengeAttempt>(
             `SELECT id, submitted_answer, is_correct, attempted_at
              FROM   challenges_attempts
              WHERE  user_id      = $1
@@ -222,7 +215,6 @@ export class ChallengesRepository {
              ORDER  BY attempted_at ASC`,
             [userId, challengeId],
         );
-        return result.rows;
     }
 
     // =========================================================================
@@ -268,11 +260,11 @@ export class ChallengesRepository {
      * @returns      Current total XP.
      */
     async getTotalXp(userId: string): Promise<number> {
-        const result = await this.db.query<{ total_xp: number }>(
+        const row = await this.findOne<{ total_xp: number }>(
             `SELECT total_xp FROM users WHERE id = $1`,
             [userId],
         );
-        return result.rows[0]?.total_xp ?? 0;
+        return row?.total_xp ?? 0;
     }
 
     // =========================================================================
@@ -287,14 +279,14 @@ export class ChallengesRepository {
      * @returns      Current challenge count.
      */
     async countByReelId(reelId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count
              FROM   challenges
              WHERE  reel_id    = $1
                AND  deleted_at IS NULL`,
             [reelId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -305,14 +297,14 @@ export class ChallengesRepository {
      * @returns      MAX("order") + 1, or 1 if no challenges exist yet.
      */
     async getNextOrder(reelId: string): Promise<number> {
-        const result = await this.db.query<{ max_order: number | null }>(
+        const row = await this.findOne<{ max_order: number | null }>(
             `SELECT MAX("order") AS max_order
              FROM   challenges
              WHERE  reel_id    = $1
                AND  deleted_at IS NULL`,
             [reelId],
         );
-        return (result.rows[0]?.max_order ?? 0) + 1;
+        return (row?.max_order ?? 0) + 1;
     }
 
     /**
@@ -441,15 +433,9 @@ export class ChallengesRepository {
     async getCachedChallengesByReel(
         reelId: string,
     ): Promise<Challenge[] | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<Challenge[]>(
             `${CHALLENGES_REDIS_KEYS.REEL_CHALLENGES}:${reelId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as Challenge[];
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -462,9 +448,9 @@ export class ChallengesRepository {
         reelId: string,
         challenges: Challenge[],
     ): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${CHALLENGES_REDIS_KEYS.REEL_CHALLENGES}:${reelId}`,
-            JSON.stringify(challenges),
+            challenges,
             CHALLENGES_CACHE_TTL.REEL_CHALLENGES,
         );
     }
@@ -476,9 +462,7 @@ export class ChallengesRepository {
      * @param reelId UUID of the reel.
      */
     async invalidateChallengesByReelCache(reelId: string): Promise<void> {
-        await this.redis.del(
-            `${CHALLENGES_REDIS_KEYS.REEL_CHALLENGES}:${reelId}`,
-        );
+        await this.redis.del(`${CHALLENGES_REDIS_KEYS.REEL_CHALLENGES}:${reelId}`);
     }
 
     // =========================================================================
@@ -494,15 +478,9 @@ export class ChallengesRepository {
     async getCachedChallengeById(
         challengeId: string,
     ): Promise<Challenge | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<Challenge>(
             `${CHALLENGES_REDIS_KEYS.CHALLENGE_BY_ID}:${challengeId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as Challenge;
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -511,9 +489,9 @@ export class ChallengesRepository {
      * @param challenge The Challenge row to store.
      */
     async setCachedChallengeById(challenge: Challenge): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${CHALLENGES_REDIS_KEYS.CHALLENGE_BY_ID}:${challenge.id}`,
-            JSON.stringify(challenge),
+            challenge,
             CHALLENGES_CACHE_TTL.CHALLENGE_BY_ID,
         );
     }
@@ -525,9 +503,7 @@ export class ChallengesRepository {
      * @param challengeId UUID of the challenge.
      */
     async invalidateChallengeByIdCache(challengeId: string): Promise<void> {
-        await this.redis.del(
-            `${CHALLENGES_REDIS_KEYS.CHALLENGE_BY_ID}:${challengeId}`,
-        );
+        await this.redis.del(`${CHALLENGES_REDIS_KEYS.CHALLENGE_BY_ID}:${challengeId}`);
     }
 
     // =========================================================================
@@ -545,15 +521,9 @@ export class ChallengesRepository {
         userId: string,
         challengeId: string,
     ): Promise<AttemptSummary | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<AttemptSummary>(
             `${CHALLENGES_REDIS_KEYS.ATTEMPT_SUMMARY}:${userId}:${challengeId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as AttemptSummary;
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -569,9 +539,9 @@ export class ChallengesRepository {
         challengeId: string,
         summary: AttemptSummary,
     ): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${CHALLENGES_REDIS_KEYS.ATTEMPT_SUMMARY}:${userId}:${challengeId}`,
-            JSON.stringify(summary),
+            summary,
             CHALLENGES_CACHE_TTL.ATTEMPT_SUMMARY,
         );
     }
@@ -591,15 +561,9 @@ export class ChallengesRepository {
         userId: string,
         challengeId: string,
     ): Promise<ChallengeAttempt[] | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<ChallengeAttempt[]>(
             `${CHALLENGES_REDIS_KEYS.ATTEMPT_HISTORY}:${userId}:${challengeId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as ChallengeAttempt[];
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -615,9 +579,9 @@ export class ChallengesRepository {
         challengeId: string,
         attempts: ChallengeAttempt[],
     ): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${CHALLENGES_REDIS_KEYS.ATTEMPT_HISTORY}:${userId}:${challengeId}`,
-            JSON.stringify(attempts),
+            attempts,
             CHALLENGES_CACHE_TTL.ATTEMPT_HISTORY,
         );
     }
@@ -654,15 +618,9 @@ export class ChallengesRepository {
         userId: string,
         reelId: string,
     ): Promise<UserAttemptStatus[] | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<UserAttemptStatus[]>(
             `${CHALLENGES_REDIS_KEYS.USER_REEL_ATTEMPTS}:${userId}:${reelId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as UserAttemptStatus[];
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -677,9 +635,9 @@ export class ChallengesRepository {
         reelId: string,
         attempts: UserAttemptStatus[],
     ): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${CHALLENGES_REDIS_KEYS.USER_REEL_ATTEMPTS}:${userId}:${reelId}`,
-            JSON.stringify(attempts),
+            attempts,
             CHALLENGES_CACHE_TTL.USER_REEL_ATTEMPTS,
         );
     }
@@ -715,15 +673,9 @@ export class ChallengesRepository {
         userId: string,
         idempotencyKey: string,
     ): Promise<IdempotencyEntry | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<IdempotencyEntry>(
             `${CHALLENGES_REDIS_KEYS.IDEMPOTENCY}:${userId}:${idempotencyKey}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as IdempotencyEntry;
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -739,9 +691,9 @@ export class ChallengesRepository {
         idempotencyKey: string,
         entry: IdempotencyEntry,
     ): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${CHALLENGES_REDIS_KEYS.IDEMPOTENCY}:${userId}:${idempotencyKey}`,
-            JSON.stringify(entry),
+            entry,
             CHALLENGES_CACHE_TTL.IDEMPOTENCY,
         );
     }

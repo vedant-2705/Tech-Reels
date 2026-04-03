@@ -30,7 +30,7 @@ import {
     ApiTags,
 } from "@nestjs/swagger";
 
-import { UsersService } from "./users.service";
+import { UsersService } from "./users.service.abstract";
 
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UpdateProfileResponseDto } from "./dto/update-profile-response.dto";

@@ -92,4 +92,36 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     async getClient(): Promise<PoolClient> {
         return this.pool.connect();
     }
+
+    /**
+     * Execute a function inside a single database transaction.
+     * Automatically handles BEGIN, COMMIT, ROLLBACK, and client release so
+     * repositories no longer need to copy-paste transaction boilerplate.
+     *
+     * @param fn Async function receiving the pool client and returning a result.
+     * @returns Result of the provided function.
+     *
+     * @example
+     * return this.db.withTransaction(async (client) => {
+     *   await client.query('INSERT INTO users ...', [...]);
+     *   await client.query('INSERT INTO user_topic_affinity ...', [...]);
+     *   return createdUser;
+     * });
+     */
+    async withTransaction<T>(
+        fn: (client: PoolClient) => Promise<T>,
+    ): Promise<T> {
+        const client = await this.pool.connect();
+        try {
+            await client.query("BEGIN");
+            const result = await fn(client);
+            await client.query("COMMIT");
+            return result;
+        } catch (err) {
+            await client.query("ROLLBACK");
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
 }

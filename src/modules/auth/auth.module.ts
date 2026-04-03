@@ -13,11 +13,14 @@ import { ConfigService } from "@nestjs/config";
 import { AUTH_JWT, AUTH_TTL } from "./auth.constants";
 
 import { AuthController } from "./auth.controller";
-import { AuthService } from "./auth.service";
+import { AuthService } from "./auth.service.abstract";
+import { AuthServiceImpl } from "./auth.service";
 import { AuthRepository } from "./auth.repository";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { OAuthService } from "./strategies/oauth.strategy";
 import { AuthSessionService } from "./auth-session.service";
+import { TokenService } from "./services/token.service";
+import { UsernameGeneratorService } from "./services/username-generator.service";
 
 /**
  * Registers auth runtime dependencies and JWT signing/verification support.
@@ -43,7 +46,15 @@ import { AuthSessionService } from "./auth-session.service";
         }),
     ],
     controllers: [AuthController],
-    providers: [AuthService, AuthSessionService, AuthRepository, JwtStrategy, OAuthService],
+    providers: [
+        { provide: AuthService, useClass: AuthServiceImpl },
+        AuthSessionService,
+        AuthRepository,
+        TokenService,
+        UsernameGeneratorService,
+        JwtStrategy,
+        OAuthService,
+    ],
     exports: [
         // Exported so other modules can verify JWTs or use JwtService if needed
         JwtModule,

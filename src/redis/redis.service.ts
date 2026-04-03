@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import Redis from "ioredis";
+import Redis, { ChainableCommander } from "ioredis";
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
@@ -344,6 +344,28 @@ export class RedisService implements OnModuleDestroy {
             });
             stream.on("error", reject);
         });
+    }
+
+    // Pipeline
+
+    /**
+     * Execute multiple Redis commands in a pipeline to reduce network roundtrips.
+     * The provided callback receives the ioredis Pipeline instance to enqueue commands.
+     * Once the callback completes, the pipeline is automatically executed.
+     *
+     * @param callback Function to enqueue commands on the pipeline.
+     * @returns Array of results from pipeline.exec() or throws on execution failure.
+     */
+    async withPipeline(
+        callback: (pipeline: ChainableCommander) => void | Promise<void>,
+    ): Promise<unknown[]> {
+        const pipeline = this.client.pipeline();
+        await callback(pipeline);
+        const results = await pipeline.exec();
+        if (!results) {
+            throw new Error("Pipeline execution failed to return results");
+        }
+        return results;
     }
 
     // Lifecycle

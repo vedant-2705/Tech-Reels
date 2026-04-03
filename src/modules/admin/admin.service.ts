@@ -83,13 +83,14 @@ import { ReportNotFoundException } from "./exceptions/report-not-found.exception
 import { AdminReelNotFoundException } from "./exceptions/admin-reel-not-found.exception";
 import { AdminChallengeNotFoundException } from "./exceptions/admin-challenge-not-found.exception";
 import { MaxChallengesException } from "./exceptions/max-challenges.exception";
+import { AdminService } from "./admin.service.abstract";
 
 /**
  * Orchestrates all Admin workflows including user management, moderation,
  * challenge operations, and analytics.
  */
 @Injectable()
-export class AdminService {
+export class AdminServiceImpl extends AdminService {
     private readonly logger = new Logger(AdminService.name);
 
     /**
@@ -105,17 +106,13 @@ export class AdminService {
         private readonly notificationQueue: Queue,
         @InjectQueue(QUEUES.XP_AWARD)
         private readonly xpAwardQueue: Queue,
-    ) {}
+    ) {
+        super();
+    }
 
     //  GET /admin/users 
 
-    /**
-     * Search and list users with optional ILIKE filter, status/role filters,
-     * and cursor pagination. Returns total_count from window function.
-     *
-     * @param query Search and pagination parameters.
-     * @returns Paginated user list with total_count metadata.
-     */
+    /** @inheritdoc */
     async searchUsers(
         query: UserSearchQueryDto,
     ): Promise<AdminUserListResponseDto> {
@@ -159,13 +156,7 @@ export class AdminService {
 
     //  GET /admin/users/:id 
 
-    /**
-     * Fetch full user profile visible to admins. Runs findUserById,
-     * getLinkedProviders, and getUserStats in parallel where possible.
-     *
-     * @param userId Target user UUID.
-     * @returns Full AdminUserDetailDto.
-     */
+    /** @inheritdoc */
     async getUserDetail(userId: string): Promise<AdminUserDetailDto> {
         const user = await this.adminRepository.findUserById(userId);
         if (!user) throw new AdminUserNotFoundException();
@@ -200,16 +191,7 @@ export class AdminService {
 
     //  PATCH /admin/users/:id/status 
 
-    /**
-     * Update a user's account status. Enforces the cannot-ban-admin rule.
-     * Revokes all sessions immediately when status is suspended or banned.
-     * Enqueues admin_message notification. Appends audit log entry.
-     *
-     * @param adminId UUID of the admin performing the action.
-     * @param userId Target user UUID.
-     * @param dto Status and optional reason.
-     * @returns Updated id, account_status, updated_at.
-     */
+    /** @inheritdoc */
     async updateUserStatus(
         adminId: string,
         userId: string,
@@ -264,15 +246,7 @@ export class AdminService {
 
     //  POST /admin/users/:id/xp 
 
-    /**
-     * Grant or revoke XP for a user. Enqueues the xp_award job for the
-     * actual write. Returns an optimistic new_total_xp = current_xp + delta.
-     *
-     * @param adminId UUID of the admin performing the action.
-     * @param userId Target user UUID.
-     * @param dto Delta and required note.
-     * @returns user_id, delta, and optimistic new_total_xp.
-     */
+    /** @inheritdoc */
     async grantXp(
         adminId: string,
         userId: string,
@@ -307,13 +281,7 @@ export class AdminService {
 
     //  GET /admin/reports 
 
-    /**
-     * List reports with optional status and reason filters.
-     * Defaults to status=pending when omitted.
-     *
-     * @param query Filter and pagination parameters.
-     * @returns Paginated report list.
-     */
+    /** @inheritdoc */
     async listReports(
         query: ReportsQueryDto,
     ): Promise<AdminReportsListResponseDto> {
@@ -341,18 +309,16 @@ export class AdminService {
     //  PATCH /admin/reports/:id 
 
     /**
-     * Action a moderation report. Applies the correct status transition and
+     * 
      * side effects based on the requested action:
-     *   dismiss        -> mark dismissed
-     *   disable_reel   -> mark actioned + disable reel + evict cache + notify creator
-     *   warn_creator   -> mark actioned + notify creator
-     *   escalate       -> mark escalated
+     *   - `dismiss`        -> mark dismissed
+     *   - `disable_reel`   -> mark actioned + disable reel + evict cache + notify creator
+     *   - `warn_creator`   -> mark actioned + notify creator
+     *   - `escalate`       -> mark escalated
+     * 
      * All paths append to audit log.
      *
-     * @param adminId UUID of the admin performing the action.
-     * @param reportId Report UUID.
-     * @param dto Action and optional note.
-     * @returns report_id, action_taken, reviewed_at.
+     * @inheritdoc
      */
     async actionReport(
         adminId: string,
@@ -429,15 +395,12 @@ export class AdminService {
     //  PATCH /admin/reels/:id/status 
 
     /**
-     * Update reel status via the admin endpoint.
-     * Always evicts reel:meta cache.
-     * Notifies creator when disabling.
-     * Appends audit log.
+     * 
+     * - Always evicts reel:meta cache.
+     * - Notifies creator when disabling.
+     * - Appends audit log.
      *
-     * @param adminId UUID of the admin performing the action.
-     * @param reelId Reel UUID.
-     * @param dto New status and optional note.
-     * @returns reel_id, status, updated_at.
+     * @inheritdoc
      */
     async updateReelStatus(
         adminId: string,
@@ -483,15 +446,12 @@ export class AdminService {
     //  POST /admin/reels/:id/challenges 
 
     /**
-     * Create a challenge on a reel. Enforces the 3-challenge cap on active
-     * (non-deleted) challenges. Auto-sets xp_reward and token_reward from
-     * difficulty. Auto-sets order = current_count + 1.
+     * 
+     * Enforces the 3-challenge cap on active (non-deleted) challenges. Auto-sets xp_reward and token_reward from difficulty. Auto-sets order = current_count + 1.
+     * 
      * Persists correct_answer as String(dto.correct_answer).
      *
-     * @param adminId UUID of the admin creating the challenge.
-     * @param reelId Reel UUID.
-     * @param dto Challenge creation payload.
-     * @returns Full AdminChallengeResponseDto.
+     * @inheritdoc
      */
     async createChallenge(
         adminId: string,
@@ -536,15 +496,7 @@ export class AdminService {
 
     //  DELETE /admin/reels/:id/challenges/:challengeId 
 
-    /**
-     * Soft-delete a challenge from a reel and reorder remaining challenges.
-     * Both operations execute in a single transaction in the repository.
-     *
-     * @param adminId UUID of the admin removing the challenge.
-     * @param reelId Reel UUID.
-     * @param challengeId Challenge UUID.
-     * @returns Success message.
-     */
+    /** @inheritdoc */
     async removeChallenge(
         adminId: string,
         reelId: string,
@@ -575,11 +527,7 @@ export class AdminService {
 
     //  GET /admin/analytics/summary 
 
-    /**
-     * Fetch platform-wide analytics summary. All sub-queries run in parallel.
-     *
-     * @returns AnalyticsSummaryDto.
-     */
+    /** @inheritdoc */
     async getAnalyticsSummary(): Promise<AnalyticsSummaryDto> {
         const [users, reels, challenges, reports, xp] = await Promise.all([
             this.adminRepository.getUserCountStats(),
@@ -621,12 +569,7 @@ export class AdminService {
 
     //  GET /admin/analytics/top-reels 
 
-    /**
-     * Fetch top reels ranked by the requested metric and period.
-     *
-     * @param query Sort, limit, and period parameters.
-     * @returns TopReelsResponseDto with ranked reel list.
-     */
+    /** @inheritdoc */
     async getTopReels(query: TopReelsQueryDto): Promise<TopReelsResponseDto> {
         const rows = await this.adminRepository.getTopReels({
             sortBy: query.sort_by ?? TOP_REELS_SORT.VIEWS,
@@ -654,12 +597,7 @@ export class AdminService {
 
     //  GET /admin/analytics/top-users 
 
-    /**
-     * Fetch top users ranked by the requested metric.
-     *
-     * @param query Sort and limit parameters.
-     * @returns TopUsersResponseDto with ranked user list.
-     */
+    /** @inheritdoc */
     async getTopUsers(query: TopUsersQueryDto): Promise<TopUsersResponseDto> {
         const rows = await this.adminRepository.getTopUsers({
             sortBy: query.sort_by ?? TOP_USERS_SORT.XP,

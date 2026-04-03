@@ -17,6 +17,7 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import {
     InsertXpLedgerData,
     UserStreakRow,
@@ -42,15 +43,13 @@ import {
  * updates, badge awards, leaderboard sorted sets, and topic affinity.
  */
 @Injectable()
-export class GamificationRepository {
-    /**
-     * @param db    PostgreSQL database service.
-     * @param redis Redis service for cache and sorted-set operations.
-     */
+export class GamificationRepository extends BaseRepository {
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     // =========================================================================
     // DB - XP deduplication check
@@ -71,7 +70,7 @@ export class GamificationRepository {
         source: string,
         referenceId: string,
     ): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
+        return await this.existsWhere(
             `SELECT EXISTS(
                 SELECT 1 FROM xp_ledger
                 WHERE user_id      = $1
@@ -80,7 +79,6 @@ export class GamificationRepository {
              ) AS exists`,
             [userId, source, referenceId],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     // =========================================================================
@@ -153,14 +151,13 @@ export class GamificationRepository {
     async getChallengeTokenReward(
         challengeId: string,
     ): Promise<ChallengeTokenRow | null> {
-        const result = await this.db.query<ChallengeTokenRow>(
+        return await this.findOne<ChallengeTokenRow>(
             `SELECT token_reward, reel_id
              FROM   challenges
              WHERE  id         = $1
                AND  deleted_at IS NULL`,
             [challengeId],
         );
-        return result.rows[0] ?? null;
     }
 
     // =========================================================================
@@ -175,11 +172,10 @@ export class GamificationRepository {
      * @returns      Array of { tag_id } rows (may be empty).
      */
     async getTagsForReel(reelId: string): Promise<ReelTagRow[]> {
-        const result = await this.db.query<ReelTagRow>(
+        return await this.findMany<ReelTagRow>(
             `SELECT tag_id FROM reel_tags WHERE reel_id = $1`,
             [reelId],
         );
-        return result.rows;
     }
 
     // =========================================================================
@@ -218,7 +214,7 @@ export class GamificationRepository {
      * @returns      Array of tag UUID strings.
      */
     async getTopTagIds(userId: string, limit: number): Promise<string[]> {
-        const result = await this.db.query<{ tag_id: string }>(
+        const rows = await this.findMany<{ tag_id: string }>(
             `SELECT tag_id
              FROM   user_topic_affinity
              WHERE  user_id = $1
@@ -226,7 +222,7 @@ export class GamificationRepository {
              LIMIT  $2`,
             [userId, limit],
         );
-        return result.rows.map((r) => r.tag_id);
+        return rows.map((r) => r.tag_id);
     }
 
     // =========================================================================
@@ -240,7 +236,7 @@ export class GamificationRepository {
      * @returns      UserStreakRow or null if user not found.
      */
     async getUserStreakRow(userId: string): Promise<UserStreakRow | null> {
-        const result = await this.db.query<UserStreakRow>(
+        return await this.findOne<UserStreakRow>(
             `SELECT id, current_streak, longest_streak,
                     last_active_date::text, streak_freeze_until::text
              FROM   users
@@ -248,7 +244,6 @@ export class GamificationRepository {
                AND  deleted_at IS NULL`,
             [userId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -269,7 +264,7 @@ export class GamificationRepository {
         limit: number,
         offset: number,
     ): Promise<UserStreakRow[]> {
-        const result = await this.db.query<UserStreakRow>(
+        return await this.findMany<UserStreakRow>(
             `SELECT id, current_streak, longest_streak,
                     last_active_date::text, streak_freeze_until::text
              FROM   users
@@ -282,7 +277,6 @@ export class GamificationRepository {
              OFFSET $3`,
             [todayUtc, limit, offset],
         );
-        return result.rows;
     }
 
     // =========================================================================
@@ -378,7 +372,7 @@ export class GamificationRepository {
      * @returns            Array of active Badge rows.
      */
     async getActiveBadgesForEvent(eventTrigger: string): Promise<Badge[]> {
-        const result = await this.db.query<Badge>(
+        return await this.findMany<Badge>(
             `SELECT id, code, name, description, icon_url, criteria,
                     is_active, created_at, updated_at
              FROM   badges
@@ -386,7 +380,6 @@ export class GamificationRepository {
                AND  criteria->>'event_trigger'         = $1`,
             [eventTrigger],
         );
-        return result.rows;
     }
 
     /**
@@ -398,15 +391,10 @@ export class GamificationRepository {
      * @returns       true if the user already has this badge.
      */
     async userHasBadge(userId: string, badgeId: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-                SELECT 1 FROM user_badges
-                WHERE user_id  = $1
-                  AND badge_id = $2
-             ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2) AS exists`,
             [userId, badgeId],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -417,14 +405,14 @@ export class GamificationRepository {
      * @returns      Count of correct attempts.
      */
     async getTotalCorrectCount(userId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count
              FROM   challenges_attempts
              WHERE  user_id    = $1
                AND  is_correct = true`,
             [userId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -440,7 +428,7 @@ export class GamificationRepository {
         userId: string,
         limit: number,
     ): Promise<RecentAttemptRow[]> {
-        const result = await this.db.query<RecentAttemptRow>(
+        const rows = await this.findMany<RecentAttemptRow>(
             `SELECT is_correct, attempted_at
              FROM   challenges_attempts
              WHERE  user_id = $1
@@ -449,7 +437,7 @@ export class GamificationRepository {
             [userId, limit],
         );
         // Reverse to oldest-first for streak counting
-        return result.rows.reverse();
+        return rows.reverse();
     }
 
     // =========================================================================
@@ -612,9 +600,9 @@ export class GamificationRepository {
      * @param tagIds Ordered array of top tag UUID strings.
      */
     async setTopTagsCache(userId: string, tagIds: string[]): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${TOP_TAGS_KEY_PREFIX}:${userId}`,
-            JSON.stringify(tagIds),
+            tagIds,
             TOP_TAGS_CACHE_TTL,
         );
     }

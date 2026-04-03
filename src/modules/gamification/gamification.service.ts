@@ -17,6 +17,7 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
+import { GamificationService } from "./gamification.service.abstract";
 import { GamificationRepository } from "./gamification.repository";
 import { RedisService } from "@redis/redis.service";
 import { BadgeCriteriaRegistry } from "./criteria/criteria.registry";
@@ -42,7 +43,7 @@ import {
  * Core gamification logic. All methods are called by BullMQ workers.
  */
 @Injectable()
-export class GamificationService {
+export class GamificationServiceImpl extends GamificationService {
     private readonly logger = new Logger(GamificationService.name);
 
     /**
@@ -52,14 +53,15 @@ export class GamificationService {
     constructor(
         private readonly gamificationRepository: GamificationRepository,
         private readonly redis: RedisService,
-    ) {}
+    ) {
+        super();
+    }
 
     // -------------------------------------------------------------------------
     // awardXp
     // -------------------------------------------------------------------------
 
     /**
-     * Awards XP (and tokens where applicable) to a user for a given source.
      *
      * Flow:
      *   1. Deduplication check (Redis sentinel, then DB fallback)
@@ -75,7 +77,7 @@ export class GamificationService {
      * Idempotent: if XP for this reference has already been awarded,
      * logs and returns without side effects. Safe on BullMQ retry.
      *
-     * @param payload xp_award_queue job payload.
+     * @inheritdoc
      */
     async awardXp(payload: XpAwardJobPayload): Promise<void> {
         const { userId, source, xp_amount, reference_id, note } = payload;
@@ -197,8 +199,6 @@ export class GamificationService {
     // -------------------------------------------------------------------------
 
     /**
-     * Evaluates all active badges eligible for the given event and awards
-     * any whose criteria are met by the user.
      *
      * Flow per badge:
      *   1. Check userHasBadge (skip if already earned)
@@ -209,8 +209,7 @@ export class GamificationService {
      *   6. Publish BADGE_EARNED to sse_events
      *   7. Release lock (finally block)
      *
-     * @param payload badge_evaluation_queue job payload.
-     * @returns       Array of awarded badge payloads (may be empty).
+     * @inheritdoc
      */
     async evaluateBadges(
         payload: BadgeEvaluationJobPayload,
@@ -336,7 +335,6 @@ export class GamificationService {
     // -------------------------------------------------------------------------
 
     /**
-     * Updates a user's daily watch streak after a REEL_WATCH_ENDED event.
      *
      * Streak logic (all dates in UTC):
      *   - last_active_date = today          -> already counted, touch only
@@ -348,7 +346,7 @@ export class GamificationService {
      * If streak_freeze_until >= today: treat as grace - preserve streak,
      * increment normally, clear freeze.
      *
-     * @param userId UUID of the user.
+     * @inheritdoc
      */
     async updateStreak(userId: string): Promise<void> {
         const user = await this.gamificationRepository.getUserStreakRow(userId);
@@ -405,16 +403,12 @@ export class GamificationService {
     // -------------------------------------------------------------------------
 
     /**
-     * Batch-processes streak resets for users who did not watch yesterday.
-     * Called by the StreakResetWorker on its daily repeatable job.
      *
      * For each user:
      *   - If within freeze window: activate freeze (set streak_freeze_until)
      *   - If freeze expired: reset streak to 0
      *
-     * @param batchSize Number of users per batch.
-     * @param offset    Pagination offset for this batch run.
-     * @returns         Number of users processed in this batch.
+     * @inheritdoc
      */
     async processStreakReset(
         batchSize: number,

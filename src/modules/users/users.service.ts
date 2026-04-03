@@ -15,6 +15,7 @@ import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import * as crypto from "crypto";
 
+import { UsersService } from "./users.service.abstract";
 import { UsersRepository } from "./users.repository";
 import { AuthSessionService } from "../auth/auth-session.service";
 import { S3Service } from "@s3/s3.service";
@@ -70,7 +71,7 @@ import { LeaderboardResponseDto } from "./dto/leaderboard-response.dto";
  * operations such as session revocation via AuthSessionService.
  */
 @Injectable()
-export class UsersService {
+export class UsersServiceImpl extends UsersService {
     /**
      * @param usersRepository Users persistence and cache repository.
      * @param authSessionService Exported auth service for session lifecycle ops.
@@ -86,7 +87,9 @@ export class UsersService {
         @InjectQueue(QUEUES.FEED_BUILD)
         private readonly feedBuildQueue: Queue,
         private readonly config: ConfigService,
-    ) {}
+    ) {
+        super();
+    }
 
     // -----------------------------------------------------------------------
     // Profile

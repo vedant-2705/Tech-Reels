@@ -20,10 +20,8 @@
  */
 
 import { Module } from "@nestjs/common";
-import { BullModule } from "@nestjs/bullmq";
 
 import { ReelsModule } from "@modules/reels/reels.module";
-import { QUEUES } from "@queues/queue-names";
 
 import { MediaController } from "./media.controller";
 import { MediaService } from "./media.service";
@@ -38,10 +36,6 @@ import { VideoProcessingWorker } from "./workers/video-processing.worker";
         // Provides ReelsProcessingService - injected into MediaService
         // to call setProcessingResult() and getTagsForReel() after webhook.
         ReelsModule,
-
-        // Registers the queue so @Processor(QUEUES.VIDEO_PROCESSING) is
-        // resolved by BullMQ when VideoProcessingWorker is instantiated.
-        BullModule.registerQueue({ name: QUEUES.VIDEO_PROCESSING }),
     ],
     controllers: [MediaController],
     providers: [MediaService, MediaRepository, VideoProcessingWorker],

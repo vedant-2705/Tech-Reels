@@ -16,8 +16,10 @@
  */
 
 import { Injectable } from "@nestjs/common";
+import { PoolClient } from "pg";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 import {
     SkillPath,
@@ -79,11 +81,13 @@ type UserEnrolmentSummary = Pick<
  * The service composes them via cache-aside logic.
  */
 @Injectable()
-export class SkillPathsRepository {
+export class SkillPathsRepository extends BaseRepository {
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     // =========================================================================
     // DB - Path reads
@@ -104,10 +108,8 @@ export class SkillPathsRepository {
             opts.limit, // $3
         ];
 
-        const result = await this.db.query<SkillPath>(
-            `SELECT id, title, description, difficulty, thumbnail_url,
-                    total_reels, estimated_duration_minutes, is_published,
-                    created_by, created_at, updated_at, deleted_at
+        return await this.findMany<SkillPath>(
+            `SELECT *
              FROM   skill_paths
              WHERE  is_published = true
                AND  deleted_at   IS NULL
@@ -120,7 +122,6 @@ export class SkillPathsRepository {
              LIMIT  $3`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -132,16 +133,13 @@ export class SkillPathsRepository {
      * @returns SkillPath or null if not found.
      */
     async findById(pathId: string): Promise<SkillPath | null> {
-        const result = await this.db.query<SkillPath>(
-            `SELECT id, title, description, difficulty, thumbnail_url,
-                    total_reels, estimated_duration_minutes, is_published,
-                    created_by, created_at, updated_at, deleted_at
+        return await this.findOne<SkillPath>(
+            `SELECT *
              FROM   skill_paths
              WHERE  id = $1
                AND  deleted_at IS NULL`,
             [pathId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -152,7 +150,7 @@ export class SkillPathsRepository {
      * @returns PathReel[] ordered by position ascending.
      */
     async getPathReels(pathId: string): Promise<PathReel[]> {
-        const result = await this.db.query<PathReel>(
+        return await this.findMany<PathReel>(
             `SELECT
                 spr."order",
                 r.id,
@@ -176,7 +174,6 @@ export class SkillPathsRepository {
              ORDER  BY spr."order" ASC`,
             [pathId],
         );
-        return result.rows;
     }
 
     // =========================================================================
@@ -198,14 +195,13 @@ export class SkillPathsRepository {
     ): Promise<UserEnrolmentSummary[]> {
         if (pathIds.length === 0) return [];
 
-        const result = await this.db.query<UserEnrolmentSummary>(
+        return await this.findMany<UserEnrolmentSummary>(
             `SELECT path_id, status, progress_count, enrolled_at, completed_at
              FROM   user_skill_paths
              WHERE  user_id = $1
                AND  path_id = ANY($2)`,
             [userId, pathIds],
         );
-        return result.rows;
     }
 
     /**
@@ -219,7 +215,7 @@ export class SkillPathsRepository {
         userId: string,
         pathId: string,
     ): Promise<Enrolment | null> {
-        const result = await this.db.query<Enrolment>(
+        return await this.findOne<Enrolment>(
             `SELECT user_id, path_id, status, progress_count,
                     certificate_url, enrolled_at, completed_at, updated_at
              FROM   user_skill_paths
@@ -227,7 +223,6 @@ export class SkillPathsRepository {
                AND  path_id = $2`,
             [userId, pathId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -239,14 +234,14 @@ export class SkillPathsRepository {
      * @returns Array of reel UUIDs the user has completed in this path.
      */
     async getUserProgress(userId: string, pathId: string): Promise<string[]> {
-        const result = await this.db.query<{ reel_id: string }>(
+        const rows = await this.findMany<{ reel_id: string }>(
             `SELECT reel_id
              FROM   user_skill_path_progress
              WHERE  user_id = $1
                AND  path_id = $2`,
             [userId, pathId],
         );
-        return result.rows.map((r) => r.reel_id);
+        return rows.map((r) => r.reel_id);
     }
 
     /**
@@ -257,7 +252,7 @@ export class SkillPathsRepository {
      * @returns EnrolledPath[] with path title, difficulty, thumbnail, and status.
      */
     async findEnrolledByUser(userId: string): Promise<EnrolledPath[]> {
-        const result = await this.db.query<EnrolledPath>(
+        return await this.findMany<EnrolledPath>(
             `SELECT
                 usp.path_id,
                 usp.status,
@@ -275,7 +270,6 @@ export class SkillPathsRepository {
              ORDER  BY usp.enrolled_at DESC`,
             [userId],
         );
-        return result.rows;
     }
 
     /**
@@ -290,7 +284,7 @@ export class SkillPathsRepository {
         userId: string,
         pathId: string,
     ): Promise<NextReel | null> {
-        const result = await this.db.query<NextReel>(
+        return await this.findOne<NextReel>(
             `SELECT spr."order", r.id, r.title
              FROM   skill_path_reels spr
              JOIN   reels r ON r.id = spr.reel_id
@@ -305,7 +299,6 @@ export class SkillPathsRepository {
              LIMIT  1`,
             [pathId, userId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -325,7 +318,7 @@ export class SkillPathsRepository {
         userId: string,
         reelId: string,
     ): Promise<EnrolledPathForReel[]> {
-        const result = await this.db.query<EnrolledPathForReel>(
+        return await this.findMany<EnrolledPathForReel>(
             `SELECT
                 usp.path_id,
                 sp.total_reels,
@@ -341,7 +334,6 @@ export class SkillPathsRepository {
                AND  sp.deleted_at IS NULL`,
             [userId, reelId],
         );
-        return result.rows;
     }
 
     // =========================================================================
@@ -358,7 +350,7 @@ export class SkillPathsRepository {
     async validateReelIds(reelIds: string[]): Promise<string[]> {
         if (reelIds.length === 0) return [];
 
-        const result = await this.db.query<{ id: string }>(
+        const rows = await this.findMany<{ id: string }>(
             `SELECT id
              FROM   reels
              WHERE  id         = ANY($1)
@@ -366,7 +358,7 @@ export class SkillPathsRepository {
                AND  deleted_at IS NULL`,
             [reelIds],
         );
-        return result.rows.map((r) => r.id);
+        return rows.map((r) => r.id);
     }
 
     /**
@@ -380,13 +372,13 @@ export class SkillPathsRepository {
     async getReelsDurationSum(reelIds: string[]): Promise<number> {
         if (reelIds.length === 0) return 0;
 
-        const result = await this.db.query<{ total_seconds: string }>(
+        const row = await this.findOne<{ total_seconds: string }>(
             `SELECT COALESCE(SUM(duration_seconds), 0) AS total_seconds
              FROM   reels
              WHERE  id = ANY($1)`,
             [reelIds],
         );
-        return parseInt(result.rows[0]?.total_seconds ?? "0", 10);
+        return this.parseCount(row?.total_seconds);
     }
 
     // =========================================================================
@@ -497,7 +489,7 @@ export class SkillPathsRepository {
     async setPathReels(
         pathId: string,
         reelIds: string[],
-        client: import("pg").PoolClient,
+        client: PoolClient,
     ): Promise<void> {
         // Hard-delete existing junction rows (junction table - no soft-delete)
         await client.query(`DELETE FROM skill_path_reels WHERE path_id = $1`, [
@@ -642,10 +634,7 @@ export class SkillPathsRepository {
      * @param pathId  Skill path UUID.
      */
     async resetEnrolment(userId: string, pathId: string): Promise<void> {
-        const client = await this.db.getClient();
-        try {
-            await client.query("BEGIN");
-
+        await this.db.withTransaction(async (client) => {
             await client.query(
                 `DELETE FROM user_skill_path_progress WHERE user_id = $1 AND path_id = $2`,
                 [userId, pathId],
@@ -660,14 +649,7 @@ export class SkillPathsRepository {
                  WHERE  user_id = $1 AND path_id = $2`,
                 [userId, pathId],
             );
-
-            await client.query("COMMIT");
-        } catch (err) {
-            await client.query("ROLLBACK");
-            throw err;
-        } finally {
-            client.release();
-        }
+        });
     }
 
     // =========================================================================
@@ -724,13 +706,7 @@ export class SkillPathsRepository {
      * @returns Parsed SkillPath[] or null.
      */
     async getCachedPathList(cacheKey: string): Promise<SkillPath[] | null> {
-        const raw = await this.redis.get(cacheKey);
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as SkillPath[];
-        } catch {
-            return null;
-        }
+        return this.cacheGet<SkillPath[]>(cacheKey);
     }
 
     /**
@@ -743,11 +719,7 @@ export class SkillPathsRepository {
         cacheKey: string,
         paths: SkillPath[],
     ): Promise<void> {
-        await this.redis.set(
-            cacheKey,
-            JSON.stringify(paths),
-            SKILL_PATH_CACHE_TTL.PATH_LIST,
-        );
+        await this.cacheSet(cacheKey, paths, SKILL_PATH_CACHE_TTL.PATH_LIST);
     }
 
     /**
@@ -775,15 +747,9 @@ export class SkillPathsRepository {
      * @returns Parsed SkillPath or null.
      */
     async getCachedPathById(pathId: string): Promise<SkillPath | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<SkillPath>(
             `${SKILL_PATH_REDIS_KEYS.PATH_BY_ID}:${pathId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as SkillPath;
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -792,9 +758,9 @@ export class SkillPathsRepository {
      * @param path SkillPath to store.
      */
     async setCachedPathById(path: SkillPath): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${SKILL_PATH_REDIS_KEYS.PATH_BY_ID}:${path.id}`,
-            JSON.stringify(path),
+            path,
             SKILL_PATH_CACHE_TTL.PATH_BY_ID,
         );
     }
@@ -821,15 +787,9 @@ export class SkillPathsRepository {
      * @returns Parsed EnrolledPath[] or null.
      */
     async getCachedEnrolments(userId: string): Promise<EnrolledPath[] | null> {
-        const raw = await this.redis.get(
+        return this.cacheGet<EnrolledPath[]>(
             `${SKILL_PATH_REDIS_KEYS.ENROLMENTS}:${userId}`,
         );
-        if (!raw) return null;
-        try {
-            return JSON.parse(raw) as EnrolledPath[];
-        } catch {
-            return null;
-        }
     }
 
     /**
@@ -842,9 +802,9 @@ export class SkillPathsRepository {
         userId: string,
         enrolments: EnrolledPath[],
     ): Promise<void> {
-        await this.redis.set(
+        await this.cacheSet(
             `${SKILL_PATH_REDIS_KEYS.ENROLMENTS}:${userId}`,
-            JSON.stringify(enrolments),
+            enrolments,
             SKILL_PATH_CACHE_TTL.ENROLMENTS,
         );
     }

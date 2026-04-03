@@ -12,7 +12,7 @@
 import { Processor, WorkerHost } from "@nestjs/bullmq";
 import { Logger } from "@nestjs/common";
 import { Job } from "bullmq";
-import { GamificationService } from "../gamification.service";
+import { GamificationService } from "../gamification.service.abstract";
 import { XpAwardJobPayload } from "../entities/gamification.entity";
 import { QUEUES } from "@queues/queue-names";
 import { GAMIFICATION_XP_JOBS } from "../gamification.constants";

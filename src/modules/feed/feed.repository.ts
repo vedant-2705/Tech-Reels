@@ -23,6 +23,7 @@ import {
     FEED_REDIS_KEYS,
     UserExperienceLevel,
 } from "./feed.constants";
+import { BaseRepository } from "@database/base.repository";
 
 // ---------------------------------------------------------------------------
 // Return type interfaces
@@ -83,7 +84,7 @@ export interface ReelTagPair {
  * Repository handling all persistence and cache reads for the Feed module.
  */
 @Injectable()
-export class FeedRepository {
+export class FeedRepository extends BaseRepository {
     private readonly logger = new Logger(FeedRepository.name);
 
     /**
@@ -91,9 +92,11 @@ export class FeedRepository {
      * @param redis Redis service for sorted set and list reads.
      */
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     // -------------------------------------------------------------------------
     // DB - User reads
@@ -112,7 +115,7 @@ export class FeedRepository {
         userId: string,
         limit: number,
     ): Promise<AffinityTag[]> {
-        const result = await this.db.query<{
+        const rows = await this.findMany<{
             tag_id: string;
             score: string;
             category: string;
@@ -129,7 +132,7 @@ export class FeedRepository {
             [userId, limit],
         );
 
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             tagId: row.tag_id,
             score: parseFloat(row.score),
             category: row.category,
@@ -147,7 +150,7 @@ export class FeedRepository {
     async getUserExperienceLevel(
         userId: string,
     ): Promise<UserExperienceLevel | null> {
-        const result = await this.db.query<{
+        const row = await this.findOne<{
             experience_level: UserExperienceLevel;
         }>(
             `SELECT experience_level
@@ -157,7 +160,7 @@ export class FeedRepository {
             [userId],
         );
 
-        return result.rows[0]?.experience_level ?? null;
+        return row?.experience_level ?? null;
     }
 
     // -------------------------------------------------------------------------
@@ -175,7 +178,7 @@ export class FeedRepository {
     async getReelScoringData(reelIds: string[]): Promise<ReelScoringData[]> {
         if (reelIds.length === 0) return [];
 
-        const result = await this.db.query<ReelScoringData>(
+        const rows = await this.findMany<ReelScoringData>(
             `SELECT
                 r.id,
                 r.difficulty,
@@ -195,7 +198,7 @@ export class FeedRepository {
             [reelIds],
         );
 
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             id: row.id,
             difficulty: row.difficulty,
             view_count: parseInt(String(row.view_count), 10),
@@ -221,7 +224,7 @@ export class FeedRepository {
     ): Promise<ReelAvgCompletion[]> {
         if (reelIds.length === 0) return [];
 
-        const result = await this.db.query<{
+        const rows = await this.findMany<{
             reel_id: string;
             avg_completion: string;
         }>(
@@ -236,7 +239,7 @@ export class FeedRepository {
             [reelIds],
         );
 
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             reelId: row.reel_id,
             avg_completion: parseFloat(row.avg_completion),
         }));
@@ -253,7 +256,7 @@ export class FeedRepository {
     async getReelTagIds(reelIds: string[]): Promise<ReelTagPair[]> {
         if (reelIds.length === 0) return [];
 
-        const result = await this.db.query<{
+        const rows = await this.findMany<{
             reel_id: string;
             tag_id: string;
         }>(
@@ -263,7 +266,7 @@ export class FeedRepository {
             [reelIds],
         );
 
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             reelId: row.reel_id,
             tagId: row.tag_id,
         }));
@@ -286,7 +289,7 @@ export class FeedRepository {
         userId: string,
         limit: number,
     ): Promise<string[]> {
-        const result = await this.db.query<{ reel_id: string }>(
+        const rows = await this.findMany<{ reel_id: string }>(
             `SELECT reel_id
             FROM user_reel_interaction
             WHERE user_id = $1
@@ -296,7 +299,7 @@ export class FeedRepository {
             [userId, limit],
         );
 
-        return result.rows.map((row) => row.reel_id);
+        return rows.map((row) => row.reel_id);
     }
 
     /**
@@ -310,14 +313,14 @@ export class FeedRepository {
     async getTagIdsForReels(reelIds: string[]): Promise<string[]> {
         if (reelIds.length === 0) return [];
 
-        const result = await this.db.query<{ tag_id: string }>(
+        const rows = await this.findMany<{ tag_id: string }>(
             `SELECT DISTINCT tag_id
             FROM reel_tags
             WHERE reel_id = ANY($1)`,
             [reelIds],
         );
 
-        return result.rows.map((row) => row.tag_id);
+        return rows.map((row) => row.tag_id);
     }
 
     /**
@@ -333,7 +336,7 @@ export class FeedRepository {
         difficulty: string,
         limit: number,
     ): Promise<string[]> {
-        const result = await this.db.query<{ id: string }>(
+        const rows = await this.findMany<{ id: string }>(
             `SELECT id
             FROM reels
             WHERE difficulty = $1
@@ -344,7 +347,7 @@ export class FeedRepository {
             [difficulty, limit],
         );
 
-        return result.rows.map((row) => row.id);
+        return rows.map((row) => row.id);
     }
 
     // -------------------------------------------------------------------------
@@ -362,7 +365,7 @@ export class FeedRepository {
     async getTopTrendingReelIds(
         limit: number,
     ): Promise<{ reelId: string; viewCount: number }[]> {
-        const result = await this.db.query<{
+        const rows = await this.findMany<{
             reel_id: string;
             view_count: string;
         }>(
@@ -381,7 +384,7 @@ export class FeedRepository {
             [limit],
         );
 
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             reelId: row.reel_id,
             viewCount: parseInt(row.view_count, 10),
         }));
@@ -485,11 +488,13 @@ export class FeedRepository {
 
         const key = `${FEED_REDIS_KEYS.FEED_PREFIX}:${userId}`;
 
-        await this.redis.rpush(key, ...reelIds);
-        // LTRIM keeps indices -maxSize to -1 (the rightmost maxSize elements).
-        // Older items at the left are trimmed away, preventing list growth.
-        await this.redis.ltrim(key, -maxSize, -1);
-        await this.redis.expire(key, ttl);
+        await this.redis.withPipeline((pipeline) => {
+            pipeline.rpush(key, ...reelIds);
+            // LTRIM keeps indices -maxSize to -1 (the rightmost maxSize elements).
+            // Older items at the left are trimmed away, preventing list growth.
+            pipeline.ltrim(key, -maxSize, -1);
+            pipeline.expire(key, ttl);
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -542,17 +547,15 @@ export class FeedRepository {
     ): Promise<void> {
         if (entries.length === 0) return;
 
-        const pipeline = this.redis.client.pipeline();
+        await this.redis.withPipeline((pipeline) => {
+            pipeline.del(FEED_REDIS_KEYS.TRENDING);
 
-        pipeline.del(FEED_REDIS_KEYS.TRENDING);
+            for (const { reelId, score } of entries) {
+                pipeline.zadd(FEED_REDIS_KEYS.TRENDING, score, reelId);
+            }
 
-        for (const { reelId, score } of entries) {
-            pipeline.zadd(FEED_REDIS_KEYS.TRENDING, score, reelId);
-        }
-
-        pipeline.expire(FEED_REDIS_KEYS.TRENDING, ttl);
-
-        await pipeline.exec();
+            pipeline.expire(FEED_REDIS_KEYS.TRENDING, ttl);
+        });
     }
 
     // -------------------------------------------------------------------------

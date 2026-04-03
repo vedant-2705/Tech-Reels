@@ -22,6 +22,7 @@ import { ConfigService } from "@nestjs/config";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 
+import { SkillPathsService } from "./skill-paths.service.abstract";
 import { SkillPathsRepository } from "./skill-paths.repository";
 import { DatabaseService } from "@database/database.service";
 
@@ -63,7 +64,7 @@ import { MessageResponseDto } from "@common/dto/message-response.dto";
  * progress reads, and cache management.
  */
 @Injectable()
-export class SkillPathsService {
+export class SkillPathsServiceImpl extends SkillPathsService {
     private readonly logger = new Logger(SkillPathsService.name);
 
     /** Base URL for CDN-hosted reel thumbnails. Used to convert thumbnail_key -> URL. */
@@ -73,13 +74,8 @@ export class SkillPathsService {
         private readonly skillPathsRepository: SkillPathsRepository,
         private readonly db: DatabaseService,
         private readonly config: ConfigService,
-        @InjectQueue(QUEUES.XP_AWARD)
-        private readonly xpAwardQueue: Queue,
-        @InjectQueue(QUEUES.BADGE_EVALUATION)
-        private readonly badgeEvaluationQueue: Queue,
-        @InjectQueue(QUEUES.NOTIFICATION)
-        private readonly notificationQueue: Queue,
     ) {
+        super();
         this.cdnBaseUrl = this.config.get<string>("CDN_BASE_URL") ?? "";
     }
 
@@ -88,18 +84,12 @@ export class SkillPathsService {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns a paginated list of published paths with the requesting user's
-     * enrolment status merged into each item.
      *
      * Cache strategy:
-     *   The path list is cached WITHOUT user-specific enrolment data.
-     *   Enrolments are merged on every request from a separate fast lookup
-     *   (getUserEnrolments). This avoids per-user cache entries for the list
-     *   and keeps the cache simple and widely shared.
+     *   - The path list is cached WITHOUT user-specific enrolment data.
+     *   - Enrolments are merged on every request from a separate fast lookup (getUserEnrolments). This avoids per-user cache entries for the list and keeps the cache simple and widely shared.
      *
-     * @param userId UUID of the requesting user.
-     * @param query  Difficulty filter, cursor, and limit.
-     * @returns Paginated path list with enrolment status.
+     * @inheritdoc
      */
     async getPaths(
         userId: string,
@@ -179,14 +169,7 @@ export class SkillPathsService {
     // Endpoint 2 - GET /skill-paths/me/enrolled
     // -------------------------------------------------------------------------
 
-    /**
-     * Returns all paths the authenticated user is enrolled in or has completed.
-     * Ordered by enrolled_at DESC. No pagination - enrolment counts are bounded
-     * by the rate limit over time.
-     *
-     * @param userId UUID of the requesting user.
-     * @returns All enrolled paths with status and progress.
-     */
+    /** @inheritdoc */
     async getEnrolled(userId: string): Promise<EnrolledPathsResponseDto> {
         const enrolments =
             await this.skillPathsRepository.findEnrolledByUser(userId);
@@ -211,21 +194,13 @@ export class SkillPathsService {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns full path detail including ordered reel list with per-reel
-     * completion status for the requesting user.
-     *
-     * Only published paths are visible. Admins should use a separate internal
-     * lookup if they need unpublished path detail.
-     *
+     * 
      * Cache strategy:
-     *   Path row: cache-aside (5 min TTL, shared across users)
-     *   Reel list: always fetched fresh - changes on admin update; list is small
-     *   User progress: always fetched fresh - changes on every watch event
+     *   - Path row: cache-aside (5 min TTL, shared across users)
+     *   - Reel list: always fetched fresh - changes on admin update; list is small
+     *   - User progress: always fetched fresh - changes on every watch event
      *
-     * @param userId  UUID of the requesting user.
-     * @param pathId  Skill path UUID.
-     * @returns Full path detail with reel list and completion flags.
-     * @throws PathNotFoundException if path does not exist or is unpublished.
+     * @inheritdoc
      */
     async getPathById(
         userId: string,
@@ -284,22 +259,15 @@ export class SkillPathsService {
     // -------------------------------------------------------------------------
 
     /**
-     * Enrols the user in a skill path.
      *
      * Cases:
-     *   not enrolled  -> createEnrolment
-     *   in_progress   -> throw AlreadyEnrolledException
-     *   completed     -> re-enrol: resetEnrolment (atomic transaction)
+     *   - not enrolled  -> createEnrolment
+     *   - in_progress   -> throw AlreadyEnrolledException
+     *   - completed     -> re-enrol: resetEnrolment (atomic transaction)
      *
-     * XP and badges are NOT re-awarded on re-enrolment. That logic lives in
-     * the subscriber (isFirstCompletion check). The enrol endpoint itself
-     * never touches XP/badge queues.
+     * XP and badges are NOT re-awarded on re-enrolment. That logic lives in the subscriber (isFirstCompletion check). The enrol endpoint itself never touches XP/badge queues.
      *
-     * @param userId  UUID of the user enrolling.
-     * @param pathId  Skill path UUID.
-     * @returns Enrolment confirmation with path_id and enrolled_at.
-     * @throws PathNotFoundException    if path does not exist or is unpublished.
-     * @throws AlreadyEnrolledException if user is already in_progress.
+     * @inheritdoc
      */
     async enrol(userId: string, pathId: string): Promise<EnrolResponseDto> {
         const path = await this.resolvePathOrThrow(
@@ -343,15 +311,11 @@ export class SkillPathsService {
     // -------------------------------------------------------------------------
 
     /**
-     * Removes a user from a skill path.
+     * 
      * Hard-deletes both the enrolment row and all progress rows.
      * This is intentional - unenrolling is a deliberate clean slate.
      *
-     * @param userId  UUID of the user unenrolling.
-     * @param pathId  Skill path UUID.
-     * @returns Success message.
-     * @throws PathNotFoundException if path does not exist (deleted).
-     * @throws NotEnrolledException  if user is not enrolled.
+     * @inheritdoc
      */
     async unenrol(userId: string, pathId: string): Promise<MessageResponseDto> {
         // findById (not cache) - unenrol must verify path existence independently
@@ -378,15 +342,7 @@ export class SkillPathsService {
     // Endpoint 6 - GET /skill-paths/:id/progress
     // -------------------------------------------------------------------------
 
-    /**
-     * Returns the authenticated user's progress on a specific path.
-     *
-     * @param userId  UUID of the requesting user.
-     * @param pathId  Skill path UUID.
-     * @returns Detailed progress state including next_reel and certificate_url.
-     * @throws PathNotFoundException if path does not exist or is unpublished.
-     * @throws NotEnrolledException  if user is not enrolled (not PathNotFoundException).
-     */
+    /** @inheritdoc */
     async getProgress(
         userId: string,
         pathId: string,
@@ -437,16 +393,7 @@ export class SkillPathsService {
     // Endpoint 7 - POST /skill-paths (Admin)
     // -------------------------------------------------------------------------
 
-    /**
-     * Creates a new skill path with an ordered reel list.
-     * The reel list insertion is wrapped in a transaction (setPathReels).
-     * estimated_duration_minutes is computed from the sum of reel durations.
-     *
-     * @param adminId UUID of the admin creating the path.
-     * @param dto     Validated creation payload.
-     * @returns Minimal PathResponseDto with created_at.
-     * @throws InvalidPathReelsException if any reel ID is invalid or not active.
-     */
+    /** @inheritdoc */
     async createPath(
         adminId: string,
         dto: CreatePathDto,
@@ -513,17 +460,7 @@ export class SkillPathsService {
     // Endpoint 8 - PATCH /skill-paths/:id (Admin)
     // -------------------------------------------------------------------------
 
-    /**
-     * Partially updates a skill path. If reel_ids is provided, atomically
-     * replaces the entire reel list in a transaction and recalculates duration.
-     *
-     * @param adminId  UUID of the admin performing the update.
-     * @param pathId   Skill path UUID.
-     * @param dto      Partial update payload.
-     * @returns Updated PathResponseDto with updated_at.
-     * @throws PathNotFoundException     if path does not exist or is deleted.
-     * @throws InvalidPathReelsException if any reel ID is invalid or not active.
-     */
+    /** @inheritdoc */
     async updatePath(
         adminId: string,
         pathId: string,
@@ -600,18 +537,7 @@ export class SkillPathsService {
     // Endpoint 9 - DELETE /skill-paths/:id (Admin)
     // -------------------------------------------------------------------------
 
-    /**
-     * Soft-deletes a skill path.
-     * The path is no longer returned by any user-facing endpoint.
-     * Existing enrolments remain in user_skill_paths as historical records -
-     * they are not deleted. This is intentional: user progress history is
-     * preserved even after a path is retired.
-     *
-     * @param adminId  UUID of the admin performing the deletion.
-     * @param pathId   Skill path UUID.
-     * @returns Success message.
-     * @throws PathNotFoundException if path does not exist or is already deleted.
-     */
+    /** @inheritdoc */
     async deletePath(
         adminId: string,
         pathId: string,

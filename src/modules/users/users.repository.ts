@@ -10,12 +10,9 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import { User } from "@modules/auth/entities/user.entity";
 import { USERS_CACHE_TTL_SECONDS, USERS_REDIS_KEYS } from "./users.constants";
-import {
-    LEADERBOARD_WEEKLY_KEY_PREFIX,
-    TOP_TAGS_KEY_PREFIX,
-} from "@common/constants/redis-keys.constants";
 
 // ---------------------------------------------------------------------------
 // Local domain types returned by repository methods
@@ -66,15 +63,13 @@ export interface UpdateProfileData {
  * and Redis cache.
  */
 @Injectable()
-export class UsersRepository {
-    /**
-     * @param db PostgreSQL database service.
-     * @param redis Redis service for cache operations.
-     */
+export class UsersRepository extends BaseRepository {
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     // -----------------------------------------------------------------------
     // Lookups
@@ -87,7 +82,7 @@ export class UsersRepository {
      * @returns Matching user or null.
      */
     async findById(userId: string): Promise<User | null> {
-        const result = await this.db.query<User>(
+        return await this.findOne<User>(
             `SELECT
                 id, email, username, avatar_url, bio, role, experience_level,
                 account_status, total_xp, token_balance, current_streak,
@@ -97,7 +92,6 @@ export class UsersRepository {
              WHERE id = $1 AND deleted_at IS NULL`,
             [userId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -107,7 +101,7 @@ export class UsersRepository {
      * @returns Matching user or null.
      */
     async findByUsername(username: string): Promise<User | null> {
-        const result = await this.db.query<User>(
+        return await this.findOne<User>(
             `SELECT
                 id, username, avatar_url, bio, experience_level, total_xp,
                 current_streak, longest_streak, account_status, created_at
@@ -115,7 +109,6 @@ export class UsersRepository {
              WHERE username = $1 AND deleted_at IS NULL`,
             [username],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -125,7 +118,7 @@ export class UsersRepository {
      * @returns Matching user or null.
      */
     async findByPublicProfileToken(token: string): Promise<User | null> {
-        const result = await this.db.query<User>(
+        return await this.findOne<User>(
             `SELECT
                 id, username, avatar_url, bio, experience_level, total_xp,
                 current_streak, longest_streak, account_status, created_at
@@ -133,7 +126,6 @@ export class UsersRepository {
              WHERE public_profile_token = $1 AND deleted_at IS NULL`,
             [token],
         );
-        return result.rows[0] ?? null;
     }
 
     // -----------------------------------------------------------------------
@@ -147,14 +139,10 @@ export class UsersRepository {
      * @returns true when the username is already taken.
      */
     async existsByUsername(username: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-                SELECT 1 FROM users
-                WHERE username = $1 AND deleted_at IS NULL
-             ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND deleted_at IS NULL) AS exists`,
             [username],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -170,16 +158,10 @@ export class UsersRepository {
         username: string,
         excludeUserId: string,
     ): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-                SELECT 1 FROM users
-                WHERE username = $1
-                  AND id != $2
-                  AND deleted_at IS NULL
-             ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND id != $2 AND deleted_at IS NULL) AS exists`,
             [username, excludeUserId],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     // -----------------------------------------------------------------------
@@ -239,8 +221,8 @@ export class UsersRepository {
     }
 
     /**
-     * Upsert topic affinity rows for the given tag IDs. Safe to call
-     * multiple times - idempotent via ON CONFLICT DO UPDATE.
+     * Upsert topic affinity rows for the given tag IDs in a single multi-row
+     * statement. Safe to call multiple times - idempotent via ON CONFLICT DO UPDATE.
      *
      * @param userId User UUID.
      * @param tagIds Array of tag UUIDs to seed.
@@ -251,15 +233,18 @@ export class UsersRepository {
         tagIds: string[],
         score: number,
     ): Promise<void> {
-        for (const tagId of tagIds) {
-            await this.db.query(
-                `INSERT INTO user_topic_affinity (user_id, tag_id, score, updated_at)
-                 VALUES ($1, $2, $3, now())
-                 ON CONFLICT (user_id, tag_id)
-                 DO UPDATE SET score = $3, updated_at = now()`,
-                [userId, tagId, score],
-            );
-        }
+        if (!tagIds.length) return;
+        // Single multi-row upsert - avoids N individual round-trips
+        const values = tagIds
+            .map((_, i) => `($1, $${i + 2}, $${tagIds.length + 2}, now())`)
+            .join(", ");
+        await this.db.query(
+            `INSERT INTO user_topic_affinity (user_id, tag_id, score, updated_at)
+             VALUES ${values}
+             ON CONFLICT (user_id, tag_id)
+             DO UPDATE SET score = EXCLUDED.score, updated_at = now()`,
+            [userId, ...tagIds, score],
+        );
     }
 
     /**
@@ -269,11 +254,12 @@ export class UsersRepository {
      * @returns Subset of tagIds that exist in persistence.
      */
     async validateTagIds(tagIds: string[]): Promise<string[]> {
-        const result = await this.db.query<{ id: string }>(
+        if (!tagIds.length) return [];
+        const rows = await this.findMany<{ id: string }>(
             `SELECT id FROM tags WHERE id = ANY($1)`,
             [tagIds],
         );
-        return result.rows.map((r) => r.id);
+        return rows.map((r) => r.id);
     }
 
     /**
@@ -335,11 +321,11 @@ export class UsersRepository {
      * @returns Array of provider name strings e.g. ['google', 'github'].
      */
     async getLinkedProviders(userId: string): Promise<string[]> {
-        const result = await this.db.query<{ provider: string }>(
+        const rows = await this.findMany<{ provider: string }>(
             `SELECT provider FROM oauth_accounts WHERE user_id = $1`,
             [userId],
         );
-        return result.rows.map((r) => r.provider);
+        return rows.map((r) => r.provider);
     }
 
     // -----------------------------------------------------------------------
@@ -361,18 +347,15 @@ export class UsersRepository {
         cursor: string | null,
         limit: number,
     ): Promise<XpLedgerEntry[]> {
-        const result = await this.db.query<XpLedgerEntry>(
+        return await this.findMany<XpLedgerEntry>(
             `SELECT id, delta, source, reference_id, note, created_at
              FROM xp_ledger
              WHERE user_id = $1
-               AND ($2::uuid IS NULL OR created_at < (
-                       SELECT created_at FROM xp_ledger WHERE id = $2
-                   ))
+               AND ($2::uuid IS NULL OR created_at < (SELECT created_at FROM xp_ledger WHERE id = $2))
              ORDER BY created_at DESC
              LIMIT $3`,
             [userId, cursor, limit],
         );
-        return result.rows;
     }
 
     /**
@@ -382,11 +365,11 @@ export class UsersRepository {
      * @returns Total XP integer.
      */
     async getTotalXp(userId: string): Promise<number> {
-        const result = await this.db.query<{ total_xp: number }>(
+        const row = await this.findOne<{ total_xp: number }>(
             `SELECT total_xp FROM users WHERE id = $1`,
             [userId],
         );
-        return result.rows[0]?.total_xp ?? 0;
+        return row?.total_xp ?? 0;
     }
 
     // -----------------------------------------------------------------------
@@ -400,7 +383,7 @@ export class UsersRepository {
      * @returns Array of badge entries with badge metadata.
      */
     async getUserBadges(userId: string): Promise<BadgeEntry[]> {
-        const result = await this.db.query<BadgeEntry>(
+        return await this.findMany<BadgeEntry>(
             `SELECT b.id, b.code, b.name, b.description, b.icon_url, ub.earned_at
              FROM user_badges ub
              JOIN badges b ON b.id = ub.badge_id
@@ -408,7 +391,6 @@ export class UsersRepository {
              ORDER BY ub.earned_at DESC`,
             [userId],
         );
-        return result.rows;
     }
 
     /**
@@ -418,11 +400,11 @@ export class UsersRepository {
      * @returns Badge count.
      */
     async getBadgeCount(userId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count FROM user_badges WHERE user_id = $1`,
             [userId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     // -----------------------------------------------------------------------
@@ -437,13 +419,13 @@ export class UsersRepository {
      * @returns Watch event count.
      */
     async getReelsWatchedCount(userId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count
              FROM user_reel_interaction
              WHERE user_id = $1 AND interaction_type = 'watch'`,
             [userId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -454,7 +436,7 @@ export class UsersRepository {
      * @returns Total attempted, total correct, and accuracy rate.
      */
     async getChallengeStats(userId: string): Promise<ChallengeStats> {
-        const result = await this.db.query<{
+        const row = await this.findOne<{
             total_attempted: string;
             total_correct: string;
         }>(
@@ -466,9 +448,8 @@ export class UsersRepository {
             [userId],
         );
 
-        const row = result.rows[0];
-        const total_attempted = parseInt(row?.total_attempted ?? "0", 10);
-        const total_correct = parseInt(row?.total_correct ?? "0", 10);
+        const total_attempted = this.parseCount(row?.total_attempted);
+        const total_correct = this.parseCount(row?.total_correct);
         const accuracy_rate =
             total_attempted > 0 ? total_correct / total_attempted : 0.0;
 
@@ -482,13 +463,13 @@ export class UsersRepository {
      * @returns Completed path count.
      */
     async getPathsCompletedCount(userId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count
              FROM user_skill_paths
              WHERE user_id = $1 AND status = 'completed'`,
             [userId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -498,13 +479,13 @@ export class UsersRepository {
      * @returns Active reel count.
      */
     async getReelsCount(userId: string): Promise<number> {
-        const result = await this.db.query<{ count: string }>(
+        const row = await this.findOne<{ count: string }>(
             `SELECT COUNT(*) AS count
              FROM reels
              WHERE creator_id = $1 AND status = 'active' AND deleted_at IS NULL`,
             [userId],
         );
-        return parseInt(result.rows[0]?.count ?? "0", 10);
+        return this.parseCount(row?.count);
     }
 
     /**
@@ -517,36 +498,32 @@ export class UsersRepository {
      */
     async getTopTagId(userId: string): Promise<string | null> {
         // 1. Try cache first
-        const cached = await this.redis.get(
+        const cachedTagIds = await this.cacheGet<string[]>(
             `${USERS_REDIS_KEYS.TOP_TAGS_PREFIX}:${userId}`,
         );
-        if (cached) {
-            try {
-                const tagIds = JSON.parse(cached) as string[];
-                return tagIds[0] ?? null;
-            } catch {
-                // corrupted cache - fall through to DB
-            }
+
+        if (cachedTagIds) {
+            return cachedTagIds[0] ?? null;
         }
 
         // 2. Cache miss - fall back to DB
-        const result = await this.db.query<{ tag_id: string }>(
+        const rows = await this.findMany<{ tag_id: string }>(
             `SELECT tag_id
-         FROM user_topic_affinity
-         WHERE user_id = $1
-         ORDER BY score DESC
-         LIMIT 5`,
+            FROM user_topic_affinity
+            WHERE user_id = $1
+            ORDER BY score DESC
+            LIMIT 5`,
             [userId],
         );
 
-        if (!result.rows.length) return null;
+        if (!rows.length) return null;
 
-        const tagIds = result.rows.map((r) => r.tag_id);
+        const tagIds = rows.map((r) => r.tag_id);
 
         // 3. Re-populate cache so next call is fast
-        await this.redis.set(
+        await this.cacheSet<string[]>(
             `${USERS_REDIS_KEYS.TOP_TAGS_PREFIX}:${userId}`,
-            JSON.stringify(tagIds),
+            tagIds,
             USERS_CACHE_TTL_SECONDS.TOP_TAGS_TTL,
         );
 
@@ -641,14 +618,14 @@ export class UsersRepository {
     async getUsernamesByIds(userIds: string[]): Promise<Map<string, string>> {
         if (!userIds.length) return new Map();
 
-        const result = await this.db.query<{ id: string; username: string }>(
+        const rows = await this.findMany<{ id: string; username: string }>(
             `SELECT id, username
          FROM users
          WHERE id = ANY($1) AND deleted_at IS NULL`,
             [userIds],
         );
 
-        return new Map(result.rows.map((r) => [r.id, r.username]));
+        return new Map(rows.map((r) => [r.id, r.username]));
     }
 
     /**
@@ -658,11 +635,11 @@ export class UsersRepository {
      * @returns Tag name string, or null if not found.
      */
     async getTagName(tagId: string): Promise<string | null> {
-        const result = await this.db.query<{ name: string }>(
+        const row = await this.findOne<{ name: string }>(
             `SELECT name FROM tags WHERE id = $1`,
             [tagId],
         );
-        return result.rows[0]?.name ?? null;
+        return row?.name ?? null;
     }
 
     /**
@@ -672,7 +649,7 @@ export class UsersRepository {
      * @returns Array of tag name + score pairs.
      */
     async getTopTopics(userId: string): Promise<TopTopic[]> {
-        const result = await this.db.query<TopTopic>(
+        return await this.findMany<TopTopic>(
             `SELECT t.name AS tag_name, uta.score
              FROM user_topic_affinity uta
              JOIN tags t ON t.id = uta.tag_id
@@ -681,7 +658,6 @@ export class UsersRepository {
              LIMIT 5`,
             [userId],
         );
-        return result.rows;
     }
 
     // -----------------------------------------------------------------------
@@ -696,6 +672,8 @@ export class UsersRepository {
      * @param avatarKey S3 object key for the pending avatar upload.
      */
     async storePendingAvatar(userId: string, avatarKey: string): Promise<void> {
+        // NOTE: avatarKey is a plain string, not JSON - use redis.set directly
+        // (cacheSet wraps with JSON.stringify which would double-encode the string)
         await this.redis.set(
             `${USERS_REDIS_KEYS.AVATAR_PENDING_PREFIX}:${userId}`,
             avatarKey,

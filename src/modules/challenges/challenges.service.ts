@@ -20,6 +20,7 @@ import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import * as crypto from "crypto";
 
+import { ChallengesService } from "./challenges.service.abstract";
 import { ChallengesRepository } from "./challenges.repository";
 import { EvaluatorRegistry } from "./evaluators/evaluator.registry";
 import { RedisService } from "@redis/redis.service";
@@ -48,11 +49,8 @@ import {
     CHALLENGE_TYPE,
     CHALLENGE_DEFAULT_TOKEN_REWARD,
     CHALLENGE_DEFAULT_MAX_ATTEMPTS,
-    CHALLENGE_TYPES_REQUIRING_OPTIONS,
-    CHALLENGE_OPTIONS_COUNT,
     CHALLENGE_XP_REWARD,
     CHALLENGE_MAX_PER_REEL,
-    ChallengeType,
 } from "./challenges.constants";
 
 import { QUEUES } from "@queues/queue-names";
@@ -65,6 +63,7 @@ import {
 import { InvalidChallengePayloadException } from "./exceptions/invalid-challenge-payload.exception";
 import { UpdateChallengeDto } from "./dto/update-challenge.dto";
 import { CreateChallengeDto } from "./dto/create-challenge.dto";
+import { OptionsValidatorService } from "./services/options-validator.service";
 
 /** Shape of the getMyAttempts response. */
 interface MyAttemptsResponse {
@@ -84,7 +83,7 @@ interface MyAttemptsResponse {
  * and cache-aside orchestration.
  */
 @Injectable()
-export class ChallengesService {
+export class ChallengesServiceImpl extends ChallengesService {
     /**
      * @param challengesRepository Challenge and attempt data-access + cache layer.
      * @param redis                RedisService for pub/sub publishing.
@@ -94,18 +93,21 @@ export class ChallengesService {
     constructor(
         private readonly challengesRepository: ChallengesRepository,
         private readonly redis: RedisService,
+        private readonly optionsValidator: OptionsValidatorService,
         @InjectQueue(QUEUES.XP_AWARD)
         private readonly xpAwardQueue: Queue,
         @InjectQueue(QUEUES.BADGE_EVALUATION)
         private readonly badgeEvaluationQueue: Queue,
-    ) {}
+    ) {
+        super();
+    }
 
     // -------------------------------------------------------------------------
     // createChallenge
     // -------------------------------------------------------------------------
 
     /**
-     * Creates a new challenge attached to a reel.
+     * 
      * Accessible by admins and the reel's creator.
      *
      * Validations (service-layer):
@@ -116,13 +118,7 @@ export class ChallengesService {
      *   - options[] length must match type requirements
      *   - correct_answer index must be in range for mcq/true_false
      *
-     * @param userId  UUID of the caller (admin or reel creator).
-     * @param reelId  UUID of the reel to attach the challenge to.
-     * @param dto     Validated creation payload.
-     * @param isAdmin Whether the caller has admin role.
-     * @returns       The newly created Challenge row.
-     * @throws        ReelNotFoundException             reel not found.
-     * @throws        InvalidChallengePayloadException  any validation rule violated.
+     * @inheritdoc
      */
     async createChallenge(
         userId: string,
@@ -154,7 +150,7 @@ export class ChallengesService {
         }
 
         // Cross-field validation: options vs type
-        this.validateOptionsForType(
+        this.optionsValidator.validateOptionsForType(
             dto.type,
             dto.options ?? null,
             dto.correct_answer,
@@ -194,20 +190,7 @@ export class ChallengesService {
     // updateChallenge
     // -------------------------------------------------------------------------
 
-    /**
-     * Partially updates an existing challenge.
-     * Accessible by admins and the reel's creator.
-     * Validates cross-field rules using the effective type
-     * (updated type if provided, existing type otherwise).
-     *
-     * @param userId      UUID of the caller.
-     * @param challengeId UUID of the challenge to update.
-     * @param dto         Partial update payload.
-     * @param isAdmin     Whether the caller has admin role.
-     * @returns           Updated Challenge row.
-     * @throws            ChallengeNotFoundException        challenge not found.
-     * @throws            InvalidChallengePayloadException  validation rule violated.
-     */
+    /** @inheritdoc */
     async updateChallenge(
         userId: string,
         challengeId: string,
@@ -241,7 +224,7 @@ export class ChallengesService {
             dto.options !== undefined ? dto.options : existing.options;
         const effectiveAnswer = dto.correct_answer ?? existing.correct_answer;
 
-        this.validateOptionsForType(
+        this.optionsValidator.validateOptionsForType(
             effectiveType,
             effectiveOptions,
             effectiveAnswer,
@@ -283,16 +266,7 @@ export class ChallengesService {
     // deleteChallenge
     // -------------------------------------------------------------------------
 
-    /**
-     * Soft-deletes a challenge.
-     * Accessible by admins and the reel's creator.
-     *
-     * @param userId      UUID of the caller.
-     * @param challengeId UUID of the challenge to delete.
-     * @param isAdmin     Whether the caller has admin role.
-     * @throws            ChallengeNotFoundException        challenge not found.
-     * @throws            InvalidChallengePayloadException  caller does not own reel.
-     */
+    /** @inheritdoc */
     async deleteChallenge(
         userId: string,
         challengeId: string,
@@ -338,17 +312,12 @@ export class ChallengesService {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns all challenges for a reel with the requesting user's latest
-     * attempt status merged into each entry. correct_answer is stripped.
-     *
+     * 
      * Cache-aside:
      *   1. challenge list   -> getCachedChallengesByReel -> miss -> findByReelId -> set cache
      *   2. user reel status -> getCachedUserReelAttempts -> miss -> getUserAttempts -> set cache
      *
-     * @param userId UUID of the requesting user.
-     * @param reelId UUID of the reel.
-     * @returns      Ordered ChallengeResponseDto[].
-     * @throws       ReelNotFoundException if reel does not exist or is not active.
+     * @inheritdoc
      */
     async getChallenges(
         userId: string,
@@ -434,7 +403,6 @@ export class ChallengesService {
     // -------------------------------------------------------------------------
 
     /**
-     * Submits and evaluates an attempt for a challenge.
      *
      * Flow:
      *   1.  Idempotency check (cache) - replay or conflict or proceed
@@ -450,15 +418,7 @@ export class ChallengesService {
      *   11. Store idempotency response
      *   12. Return result
      *
-     * @param userId         UUID of the submitting user.
-     * @param challengeId    UUID of the challenge.
-     * @param dto            Submitted answer payload.
-     * @param idempotencyKey Optional client-supplied idempotency key.
-     * @returns              Full attempt result.
-     * @throws               ChallengeNotFoundException    challenge not found.
-     * @throws               AlreadyCompletedException     already answered correctly.
-     * @throws               MaxAttemptsException          all attempts exhausted.
-     * @throws               IdempotencyConflictException  same key, different body.
+     *  @inheritdoc
      */
     async submitAttempt(
         userId: string,
@@ -591,7 +551,8 @@ export class ChallengesService {
         }
 
         // Read denormalised total_xp (always returned, correct or not)
-        const new_total_xp = await this.challengesRepository.getTotalXp(userId) + xp_awarded;
+        const new_total_xp =
+            (await this.challengesRepository.getTotalXp(userId)) + xp_awarded;
 
         const attempts_left = is_correct
             ? 0
@@ -630,16 +591,12 @@ export class ChallengesService {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns full attempt history for a user on a single challenge.
      *
      * Cache-aside:
      *   1. challenge  -> getCachedChallengeById -> miss -> findById -> set cache
      *   2. attempts   -> getCachedAttemptsForUser -> miss -> getAttemptsForUser -> set cache
      *
-     * @param userId      UUID of the requesting user.
-     * @param challengeId UUID of the challenge.
-     * @returns           Attempt list with lock status and count.
-     * @throws            ChallengeNotFoundException if challenge does not exist.
+     * @inheritdoc
      */
     async getMyAttempts(
         userId: string,
@@ -688,76 +645,7 @@ export class ChallengesService {
     // Private helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Validates the options[] / correct_answer combination for a given type.
-     * Throws InvalidChallengePayloadException on any rule violation.
-     *
-     * Rules:
-     *   mcq        -> options required, exactly 4 items, correct_answer 0-3
-     *   true_false -> options required, exactly 2 items, correct_answer 0-1
-     *   code_fill / output_prediction -> options must be null/omitted
-     *
-     * @param type          Effective challenge type.
-     * @param options       Effective options value.
-     * @param correctAnswer Effective correct_answer value.
-     */
-    private validateOptionsForType(
-        type: string,
-        options: string[] | null | undefined,
-        correctAnswer: string | number,
-    ): void {
-        const requiresOptions = CHALLENGE_TYPES_REQUIRING_OPTIONS.has(
-            type as ChallengeType,
-        );
-
-        if (requiresOptions) {
-            const requiredCount =
-                CHALLENGE_OPTIONS_COUNT[
-                    type as keyof typeof CHALLENGE_OPTIONS_COUNT
-                ];
-
-            if (!options || options.length === 0) {
-                throw new InvalidChallengePayloadException(
-                    `options[] is required for challenge type "${type}" and must have ${requiredCount} items.`,
-                );
-            }
-
-            if (options.length !== requiredCount) {
-                throw new InvalidChallengePayloadException(
-                    `challenge type "${type}" requires exactly ${requiredCount} options, got ${options.length}.`,
-                );
-            }
-
-            // correct_answer must be a valid 0-based index
-            const index = Number(correctAnswer);
-            if (
-                !Number.isInteger(index) ||
-                index < 0 ||
-                index >= (requiredCount ?? 0)
-            ) {
-                throw new InvalidChallengePayloadException(
-                    `correct_answer for type "${type}" must be a number between 0 and ${(requiredCount ?? 1) - 1}.`,
-                );
-            }
-        } else {
-            // code_fill / output_prediction must not have options
-            if (options && options.length > 0) {
-                throw new InvalidChallengePayloadException(
-                    `options[] must be omitted for challenge type "${type}".`,
-                );
-            }
-
-            // correct_answer must be a non-empty string
-            if (
-                typeof correctAnswer !== "string" ||
-                correctAnswer.trim() === ""
-            ) {
-                throw new InvalidChallengePayloadException(
-                    `correct_answer for type "${type}" must be a non-empty string.`,
-                );
-            }
-        }
-    }
+    
 
     /**
      * Computes a SHA-256 hex digest of the request body for idempotency

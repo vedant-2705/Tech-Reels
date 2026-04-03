@@ -12,6 +12,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 
 import {
@@ -78,17 +79,26 @@ export interface InteractedReel extends Reel {
  * Repository handling all persistence and cache operations for the Reels module.
  */
 @Injectable()
-export class ReelsRepository {
+export class ReelsRepository extends BaseRepository {
     private readonly logger = new Logger(ReelsRepository.name);
+    private readonly REELS_COMMON_SQL = `SELECT
+            r.*,
+            u.username,
+            u.avatar_url,
+            COALESCE(
+                json_agg(
+                json_build_object('id', t.id, 'name', t.name, 'category', t.category)
+                ) FILTER (WHERE t.id IS NOT NULL),
+                '[]'
+            ) AS tags
+        FROM reels r
+        JOIN users u ON u.id = r.creator_id
+        LEFT JOIN reel_tags rt ON rt.reel_id = r.id
+        LEFT JOIN tags t ON t.id = rt.tag_id`;
 
-    /**
-     * @param db PostgreSQL database service.
-     * @param redis Redis service for cache, Bloom filter, Sets, and Lists.
-     */
-    constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+    constructor(db: DatabaseService, redis: RedisService) {
+        super(db, redis);
+    }
 
     // DB - Read methods
 
@@ -100,54 +110,25 @@ export class ReelsRepository {
      * @returns Reel entity or null.
      */
     async findById(id: string): Promise<Reel | null> {
-        const result = await this.db.query<Reel>(
-            `SELECT
-         r.*,
-         u.username,
-         u.avatar_url,
-         COALESCE(
-           json_agg(
-             json_build_object('id', t.id, 'name', t.name, 'category', t.category)
-           ) FILTER (WHERE t.id IS NOT NULL),
-           '[]'
-         ) AS tags
-       FROM reels r
-       JOIN users u ON u.id = r.creator_id
-       LEFT JOIN reel_tags rt ON rt.reel_id = r.id
-       LEFT JOIN tags t ON t.id = rt.tag_id
-       WHERE r.id = $1 AND r.status = 'active' AND r.deleted_at IS NULL
-       GROUP BY r.id, u.username, u.avatar_url`,
+        return await this.findOne<Reel>(
+            `${this.REELS_COMMON_SQL}
+            WHERE r.id = $1 AND r.status = 'active' AND r.deleted_at IS NULL
+            GROUP BY r.id, u.username, u.avatar_url`,
             [id],
         );
-        return result.rows[0] ?? null;
     }
 
     async bulkFindByIds(ids: string[]): Promise<Reel[]> {
         if (ids.length === 0) return [];
 
-        const result = await this.db.query<Reel>(
-            `SELECT
-         r.*,
-         u.username,
-         u.avatar_url,
-         COALESCE(
-           json_agg(
-             json_build_object('id', t.id, 'name', t.name, 'category', t.category)
-           ) FILTER (WHERE t.id IS NOT NULL),
-           '[]'
-         ) AS tags
-       FROM reels r
-       JOIN users u ON u.id = r.creator_id
-       LEFT JOIN reel_tags rt ON rt.reel_id = r.id
-       LEFT JOIN tags t ON t.id = rt.tag_id
-       WHERE r.id = ANY($1)
-            AND r.status = 'active'
-            AND r.deleted_at IS NULL
-       GROUP BY r.id, u.username, u.avatar_url`,
+        return await this.findMany<Reel>(
+            `${this.REELS_COMMON_SQL}
+            WHERE r.id = ANY($1)
+                 AND r.status = 'active'
+                 AND r.deleted_at IS NULL
+            GROUP BY r.id, u.username, u.avatar_url`,
             [ids],
         );
-        return result.rows;
-
     }
 
     /**
@@ -183,28 +164,14 @@ export class ReelsRepository {
             conditions.push(`r.status = $${params.length}`);
         }
 
-        const result = await this.db.query<Reel>(
-            `SELECT
-         r.*,
-         u.username,
-         u.avatar_url,
-         COALESCE(
-           json_agg(
-             json_build_object('id', t.id, 'name', t.name, 'category', t.category)
-           ) FILTER (WHERE t.id IS NOT NULL),
-           '[]'
-         ) AS tags
-       FROM reels r
-       JOIN users u ON u.id = r.creator_id
-       LEFT JOIN reel_tags rt ON rt.reel_id = r.id
-       LEFT JOIN tags t ON t.id = rt.tag_id
-       WHERE ${conditions.join(" AND ")}
-       GROUP BY r.id, u.username, u.avatar_url
-       ORDER BY r.created_at DESC, r.id DESC
-       LIMIT $2`,
+        return await this.findMany<Reel>(
+            `${this.REELS_COMMON_SQL}
+            WHERE ${conditions.join(" AND ")}
+            GROUP BY r.id, u.username, u.avatar_url
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT $2`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -226,28 +193,14 @@ export class ReelsRepository {
             conditions.push(`r.id < $${params.length}`);
         }
 
-        const result = await this.db.query<Reel>(
-            `SELECT
-         r.*,
-         u.username,
-         u.avatar_url,
-         COALESCE(
-           json_agg(
-             json_build_object('id', t.id, 'name', t.name, 'category', t.category)
-           ) FILTER (WHERE t.id IS NOT NULL),
-           '[]'
-         ) AS tags
-       FROM reels r
-       JOIN users u ON u.id = r.creator_id
-       LEFT JOIN reel_tags rt ON rt.reel_id = r.id
-       LEFT JOIN tags t ON t.id = rt.tag_id
-       WHERE ${conditions.join(" AND ")}
-       GROUP BY r.id, u.username, u.avatar_url
-       ORDER BY r.created_at DESC, r.id DESC
-       LIMIT $1`,
+        return await this.findMany<Reel>(
+            `${this.REELS_COMMON_SQL}
+            WHERE ${conditions.join(" AND ")}
+            GROUP BY r.id, u.username, u.avatar_url
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT $1`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -283,42 +236,29 @@ export class ReelsRepository {
             conditions.push(`r.creator_id = $${params.length}`);
         }
 
-        const result = await this.db.query<Reel>(
-            `SELECT
-         r.*,
-         u.username,
-         u.avatar_url,
-         COALESCE(
-           json_agg(
-             json_build_object('id', t.id, 'name', t.name, 'category', t.category)
-           ) FILTER (WHERE t.id IS NOT NULL),
-           '[]'
-         ) AS tags
-       FROM reels r
-       JOIN users u ON u.id = r.creator_id
-       LEFT JOIN reel_tags rt ON rt.reel_id = r.id
-       LEFT JOIN tags t ON t.id = rt.tag_id
-       WHERE ${conditions.join(" AND ")}
-       GROUP BY r.id, u.username, u.avatar_url
-       ORDER BY r.created_at DESC, r.id DESC
-       LIMIT $1`,
+        return await this.findMany<Reel>(
+            `${this.REELS_COMMON_SQL}
+            WHERE ${conditions.join(" AND ")}
+            GROUP BY r.id, u.username, u.avatar_url
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT $1`,
             params,
         );
-        return result.rows;
     }
 
     /**
      * Validate that all provided tag UUIDs exist in the tags table.
      *
+     * @deprecated use method in TagsRepository instead
      * @param tagIds Candidate tag UUIDs.
      * @returns Array of matching tag IDs that actually exist.
      */
     async validateTagIds(tagIds: string[]): Promise<string[]> {
-        const result = await this.db.query<{ id: string }>(
+        const rows = await this.findMany<{ id: string }>(
             `SELECT id FROM tags WHERE id = ANY($1)`,
             [tagIds],
         );
-        return result.rows.map((r) => r.id);
+        return rows.map((r) => r.id);
     }
 
     /**
@@ -329,14 +269,13 @@ export class ReelsRepository {
      * @returns Array of tag objects.
      */
     async getTagsForReel(reelId: string): Promise<ReelTag[]> {
-        const result = await this.db.query<ReelTag>(
+        return await this.findMany<ReelTag>(
             `SELECT t.id, t.name, t.category
             FROM tags t
             JOIN reel_tags rt ON rt.tag_id = t.id
             WHERE rt.reel_id = $1`,
             [reelId],
         );
-        return result.rows;
     }
 
     /**
@@ -349,7 +288,7 @@ export class ReelsRepository {
     async findTagsByQuery(
         q: string,
     ): Promise<{ id: string; name: string; category: string }[]> {
-        const result = await this.db.query<{
+        return await this.findMany<{
             id: string;
             name: string;
             category: string;
@@ -360,7 +299,6 @@ export class ReelsRepository {
                 OR category ILIKE $1`,
             [`%${q}%`],
         );
-        return result.rows;
     }
 
     /**
@@ -380,7 +318,7 @@ export class ReelsRepository {
     ): Promise<{ reels: Reel[]; total: number }> {
         if (candidateIds.length === 0) return { reels: [], total: 0 };
 
-        const countResult = await this.db.query<{ count: string }>(
+        const countResult = await this.findOne<{ count: string }>(
             `SELECT COUNT(*)::text AS count
             FROM reels
             WHERE id = ANY($1)
@@ -389,25 +327,12 @@ export class ReelsRepository {
             [candidateIds],
         );
 
-        const total = parseInt(countResult.rows[0]?.count ?? "0", 10);
+        const total = this.parseCount(countResult?.count);
 
         if (total === 0) return { reels: [], total: 0 };
 
-        const result = await this.db.query<Reel>(
-            `SELECT
-                r.*,
-                u.username,
-                u.avatar_url,
-                COALESCE(
-                    json_agg(
-                        json_build_object('id', t.id, 'name', t.name, 'category', t.category)
-                    ) FILTER (WHERE t.id IS NOT NULL),
-                    '[]'
-                ) AS tags
-            FROM reels r
-            JOIN users u ON u.id = r.creator_id
-            LEFT JOIN reel_tags rt ON rt.reel_id = r.id
-            LEFT JOIN tags t ON t.id = rt.tag_id
+        const reels = await this.findMany<Reel>(
+            `${this.REELS_COMMON_SQL}
             WHERE r.id = ANY($1)
               AND r.status = 'active'
               AND r.deleted_at IS NULL
@@ -417,7 +342,7 @@ export class ReelsRepository {
             [candidateIds, limit, offset],
         );
 
-        return { reels: result.rows, total };
+        return { reels, total };
     }
 
     /**
@@ -429,7 +354,7 @@ export class ReelsRepository {
      */
     async findActiveReelIdsByTagIds(tagIds: string[]): Promise<string[]> {
         if (tagIds.length === 0) return [];
-        const result = await this.db.query<{ id: string }>(
+        const rows = await this.findMany<{ id: string }>(
             `SELECT DISTINCT r.id
             FROM reels r
             JOIN reel_tags rt ON rt.reel_id = r.id
@@ -438,7 +363,7 @@ export class ReelsRepository {
                 AND r.deleted_at IS NULL`,
             [tagIds],
         );
-        return result.rows.map((r) => r.id);
+        return rows.map((r) => r.id);
     }
 
     /**
@@ -455,7 +380,7 @@ export class ReelsRepository {
     async getColdStartCandidates(
         userId: string,
     ): Promise<{ reelId: string; category: string }[]> {
-        const result = await this.db.query<{
+        const rows = await this.findMany<{
             reel_id: string;
             category: string;
         }>(
@@ -508,7 +433,7 @@ export class ReelsRepository {
          ORDER BY RANDOM()`,
             [userId],
         );
-        return result.rows.map((row) => ({
+        return rows.map((row) => ({
             reelId: row.reel_id,
             category: row.category,
         }));
@@ -526,22 +451,19 @@ export class ReelsRepository {
      * @returns Newly created Reel entity with joined creator and tags.
      */
     async createWithTags(data: CreateReelWithTagsData): Promise<Reel> {
-        const client = await this.db.getClient();
         const now = new Date().toISOString();
 
-        try {
-            await client.query("BEGIN");
-
+        await this.db.withTransaction(async (client) => {
             await client.query(
                 `INSERT INTO reels (
-                id, creator_id, title, description, difficulty,
-                status, view_count, like_count, save_count, share_count,
-                created_at, updated_at
-            ) VALUES (
-                $1, $2, $3, $4, $5,
-                'processing', 0, 0, 0, 0,
-                $6, $6
-            )`,
+                    id, creator_id, title, description, difficulty,
+                    status, view_count, like_count, save_count, share_count,
+                    created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5,
+                    'processing', 0, 0, 0, 0,
+                    $6, $6
+                )`,
                 [
                     data.id,
                     data.creatorId,
@@ -558,19 +480,12 @@ export class ReelsRepository {
                     .join(", ");
                 await client.query(
                     `INSERT INTO reel_tags (reel_id, tag_id)
-                 VALUES ${values}
-                 ON CONFLICT DO NOTHING`,
+                    VALUES ${values}
+                    ON CONFLICT DO NOTHING`,
                     [data.id, ...data.tagIds],
                 );
             }
-
-            await client.query("COMMIT");
-        } catch (err) {
-            await client.query("ROLLBACK");
-            throw err;
-        } finally {
-            client.release();
-        }
+        });
 
         // Re-fetch with full joins so caller gets creator + tags in the response
         return (await this.findById(data.id))!;
@@ -587,12 +502,12 @@ export class ReelsRepository {
     async update(id: string, data: UpdateReelData): Promise<Reel> {
         const result = await this.db.query<Reel>(
             `UPDATE reels
-       SET title       = COALESCE($2, title),
-           description = COALESCE($3, description),
-           difficulty  = COALESCE($4, difficulty),
-           updated_at  = now()
-       WHERE id = $1
-       RETURNING *`,
+            SET title       = COALESCE($2, title),
+                description = COALESCE($3, description),
+                difficulty  = COALESCE($4, difficulty),
+                updated_at  = now()
+            WHERE id = $1
+            RETURNING *`,
             [
                 id,
                 data.title ?? null,
@@ -616,9 +531,9 @@ export class ReelsRepository {
     ): Promise<ReelStatusUpdate> {
         const result = await this.db.query<ReelStatusUpdate>(
             `UPDATE reels
-       SET status = $2, updated_at = now()
-       WHERE id = $1
-       RETURNING id, status, updated_at`,
+            SET status = $2, updated_at = now()
+            WHERE id = $1
+            RETURNING id, status, updated_at`,
             [id, status],
         );
         return result.rows[0];
@@ -645,8 +560,8 @@ export class ReelsRepository {
     async softDelete(id: string): Promise<void> {
         await this.db.query(
             `UPDATE reels
-       SET status = 'deleted', deleted_at = now(), updated_at = now()
-       WHERE id = $1`,
+            SET status = 'deleted', deleted_at = now(), updated_at = now()
+            WHERE id = $1`,
             [id],
         );
     }
@@ -664,12 +579,12 @@ export class ReelsRepository {
     ): Promise<void> {
         await this.db.query(
             `UPDATE reels
-       SET status           = $2,
-           hls_path         = $3,
-           thumbnail_key    = $4,
-           duration_seconds = $5,
-           updated_at       = now()
-       WHERE id = $1`,
+            SET status           = $2,
+                hls_path         = $3,
+                thumbnail_key    = $4,
+                duration_seconds = $5,
+                updated_at       = now()
+            WHERE id = $1`,
             [
                 id,
                 data.status,
@@ -693,8 +608,8 @@ export class ReelsRepository {
 
         await this.db.query(
             `INSERT INTO reel_tags (reel_id, tag_id)
-       VALUES ${values}
-       ON CONFLICT DO NOTHING`,
+            VALUES ${values}
+            ON CONFLICT DO NOTHING`,
             [reelId, ...tagIds],
         );
     }
@@ -721,13 +636,12 @@ export class ReelsRepository {
      * @returns true if a like row exists.
      */
     async isLiked(userId: string, reelId: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
+        return await this.existsWhere(
             `SELECT EXISTS(
-         SELECT 1 FROM liked_reels WHERE user_id = $1 AND reel_id = $2
-       ) AS exists`,
+                SELECT 1 FROM liked_reels WHERE user_id = $1 AND reel_id = $2
+            ) AS exists`,
             [userId, reelId],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -738,13 +652,12 @@ export class ReelsRepository {
      * @returns true if a save row exists.
      */
     async isSaved(userId: string, reelId: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
+        return await this.existsWhere(
             `SELECT EXISTS(
-         SELECT 1 FROM saved_reels WHERE user_id = $1 AND reel_id = $2
-       ) AS exists`,
+                SELECT 1 FROM saved_reels WHERE user_id = $1 AND reel_id = $2
+            ) AS exists`,
             [userId, reelId],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -756,11 +669,11 @@ export class ReelsRepository {
      */
     async bulkIsLiked(userId: string, reelIds: string[]): Promise<string[]> {
         if (reelIds.length === 0) return [];
-        const result = await this.db.query<{ reel_id: string }>(
+        const rows = await this.findMany<{ reel_id: string }>(
             `SELECT reel_id FROM liked_reels WHERE user_id = $1 AND reel_id = ANY($2)`,
             [userId, reelIds],
         );
-        return result.rows.map((r) => r.reel_id);
+        return rows.map((r) => r.reel_id);
     }
 
     /**
@@ -772,11 +685,11 @@ export class ReelsRepository {
      */
     async bulkIsSaved(userId: string, reelIds: string[]): Promise<string[]> {
         if (reelIds.length === 0) return [];
-        const result = await this.db.query<{ reel_id: string }>(
+        const rows = await this.findMany<{ reel_id: string }>(
             `SELECT reel_id FROM saved_reels WHERE user_id = $1 AND reel_id = ANY($2)`,
             [userId, reelIds],
         );
-        return result.rows.map((r) => r.reel_id);
+        return rows.map((r) => r.reel_id);
     }
 
     /**
@@ -802,7 +715,7 @@ export class ReelsRepository {
             cursorClause = `AND (lr.created_at, lr.reel_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
         }
 
-        const result = await this.db.query<InteractedReel>(
+        return await this.findMany<InteractedReel>(
             `SELECT
                 r.*,
                 u.username,
@@ -828,7 +741,6 @@ export class ReelsRepository {
             LIMIT $2`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -853,7 +765,7 @@ export class ReelsRepository {
             cursorClause = `AND (sr.created_at, sr.reel_id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
         }
 
-        const result = await this.db.query<InteractedReel>(
+        return await this.findMany<InteractedReel>(
             `SELECT
                 r.*,
                 u.username,
@@ -879,7 +791,6 @@ export class ReelsRepository {
             LIMIT $2`,
             params,
         );
-        return result.rows;
     }
 
     /**
@@ -923,8 +834,8 @@ export class ReelsRepository {
     async save(userId: string, reelId: string): Promise<boolean> {
         const result = await this.db.query(
             `INSERT INTO saved_reels (user_id, reel_id, created_at)
-       VALUES ($1, $2, now())
-       ON CONFLICT DO NOTHING`,
+            VALUES ($1, $2, now())
+            ON CONFLICT DO NOTHING`,
             [userId, reelId],
         );
         return (result.rowCount ?? 0) > 0;
@@ -963,8 +874,8 @@ export class ReelsRepository {
         const id = uuidv7();
         await this.db.query(
             `INSERT INTO reports (id, reporter_id, reel_id, reason, details, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'pending', now())
-       ON CONFLICT (reporter_id, reel_id) DO NOTHING`,
+            VALUES ($1, $2, $3, $4, $5, 'pending', now())
+            ON CONFLICT (reporter_id, reel_id) DO NOTHING`,
             [id, reporterId, reelId, reason, details ?? null],
         );
     }
@@ -1133,6 +1044,25 @@ export class ReelsRepository {
     }
 
     /**
+     * Add a reel ID to multiple tags' active reel sets (SADD) using a pipeline.
+     * Used when a reel becomes active.
+     *
+     * @param tagIds Array of Tag UUIDs.
+     * @param reelId Reel UUID.
+     */
+    async bulkAddToTagSets(tagIds: string[], reelId: string): Promise<void> {
+        if (tagIds.length === 0) return;
+        await this.redis.withPipeline((pipeline) => {
+            for (const tagId of tagIds) {
+                pipeline.sadd(
+                    `${REELS_REDIS_KEYS.TAG_SET_PREFIX}:${tagId}`,
+                    reelId,
+                );
+            }
+        });
+    }
+
+    /**
      * Remove a reel ID from a tag's active reel set (SREM).
      * Used when a reel is deleted or disabled.
      *
@@ -1144,6 +1074,25 @@ export class ReelsRepository {
             `${REELS_REDIS_KEYS.TAG_SET_PREFIX}:${tagId}`,
             reelId,
         );
+    }
+
+    /**
+     * Remove a reel ID from multiple tags' active reel sets (SREM) using a pipeline.
+     * Used when a reel is deleted or disabled.
+     *
+     * @param tagIds Array of Tag UUIDs.
+     * @param reelId Reel UUID.
+     */
+    async bulkRemoveFromTagSets(tagIds: string[], reelId: string): Promise<void> {
+        if (tagIds.length === 0) return;
+        await this.redis.withPipeline((pipeline) => {
+            for (const tagId of tagIds) {
+                pipeline.srem(
+                    `${REELS_REDIS_KEYS.TAG_SET_PREFIX}:${tagId}`,
+                    reelId,
+                );
+            }
+        });
     }
 
     // Cache - feed:{userId} List

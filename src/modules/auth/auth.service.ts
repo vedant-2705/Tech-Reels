@@ -6,13 +6,14 @@
  */
 
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 
+import { AuthService } from "./auth.service.abstract";
 import { AuthRepository } from "./auth.repository";
 import { OAuthService } from "./strategies/oauth.strategy";
+import { TokenService } from "./services/token.service";
+import { UsernameGeneratorService } from "./services/username-generator.service";
 import { AccountStatus, User } from "./entities/user.entity";
 
 import { RegisterDto } from "./dto/register.dto";
@@ -23,43 +24,37 @@ import { RefreshResponseDto } from "./dto/refresh-response.dto";
 import { MeResponseDto } from "./dto/me-response.dto";
 import { MessageResponseDto } from "@common/dto/message-response.dto";
 
-import { EmailConflictException } from "@modules/auth/exceptions/email-conflict.exception";
 import { UsernameConflictException } from "@common/exceptions/username-conflict.exception";
 import { InvalidTopicsException } from "@common/exceptions/invalid-topics.exception";
 import { InvalidCredentialsException } from "@common/exceptions/invalid-credentials.exception";
 import { AccountNotActiveException } from "@common/exceptions/account-not-active.exception";
+
+import { EmailConflictException } from "@modules/auth/exceptions/email-conflict.exception";
 import { TooManyAttemptsException } from "@modules/auth/exceptions/too-many-attempts.exception";
 import { SessionExpiredException } from "@modules/auth/exceptions/session-expired.exception";
 import { TokenReuseException } from "@modules/auth/exceptions/token-reuse.exception";
 import { InvalidProviderException } from "@modules/auth/exceptions/invalid-provider.exception";
 
+import { QUEUES } from "@queues/queue-names";
+import { RedisService } from "@redis/redis.service";
+
 import {
-    hashValue,
     compareHash,
     DUMMY_HASH,
-} from "../../common/utils/hash.util";
-import { uuidv7 } from "../../common/utils/uuidv7.util";
-import { RedisService } from "../../redis/redis.service";
-import { QUEUES } from "../../queues/queue-names";
+    hashValue,
+} from "@common/utils/hash.util";
 import {
     UserLoggedInEvent,
     UserLoggedOutEvent,
 } from "./events/user-registered.event";
 import {
     AUTH_BCRYPT_ROUNDS,
-    AUTH_JWT,
     AUTH_MESSAGES,
     AUTH_MODULE_CONSTANTS,
     AUTH_OAUTH,
     AUTH_QUEUE_JOBS,
-    AUTH_TTL,
 } from "./auth.constants";
-
-interface TokenPair {
-    access_token: string;
-    refresh_token: string;
-    token_family: string;
-}
+import { USERS_ACCOUNT_STATUS } from "@common/constants/shared.constants";
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
@@ -67,10 +62,12 @@ type InactiveAccountStatus = Exclude<AccountStatus, "active">;
  * Coordinates auth workflows, side effects, and token lifecycle management.
  */
 @Injectable()
-export class AuthService {
+export class AuthServiceImpl extends AuthService {
     /**
      * @param authRepository Auth persistence and cache repository.
      * @param oauthService OAuth integration service.
+     * @param tokenService JWT token lifecycle service.
+     * @param usernameGeneratorService Username generation service.
      * @param jwtService JWT signing and verification service.
      * @param config Runtime configuration provider.
      * @param redis Redis pub/sub client.
@@ -80,21 +77,17 @@ export class AuthService {
     constructor(
         private readonly authRepository: AuthRepository,
         private readonly oauthService: OAuthService,
-        private readonly jwtService: JwtService,
-        private readonly config: ConfigService,
+        private readonly tokenService: TokenService,
+        private readonly usernameGeneratorService: UsernameGeneratorService,
         private readonly redis: RedisService,
         @InjectQueue(QUEUES.NOTIFICATION)
         private readonly notificationQueue: Queue,
         @InjectQueue(QUEUES.FEED_BUILD) private readonly feedBuildQueue: Queue,
-    ) {}
+    ) {
+        super();
+    }
 
-    /**
-     * Register a new user with email/password credentials.
-     *
-     * @param dto Registration payload.
-     * @returns Authentication response with user snapshot and tokens.
-     */
-
+    /** @inheritdoc */
     async register(dto: RegisterDto): Promise<AuthResponseDto> {
         // 1. Check email uniqueness
         if (await this.authRepository.existsByEmail(dto.email)) {
@@ -113,7 +106,10 @@ export class AuthService {
         }
 
         // 4. Hash password - cost 12 for passwords
-        const password_hash = await hashValue(dto.password, AUTH_BCRYPT_ROUNDS.PASSWORD);
+        const password_hash = await hashValue(
+            dto.password,
+            AUTH_BCRYPT_ROUNDS.PASSWORD,
+        );
 
         // 5. Create user row + seed user_topic_affinity in one transaction
         const user = await this.authRepository.createUserWithAffinity({
@@ -125,7 +121,7 @@ export class AuthService {
         });
 
         // 6. Generate token pair
-        const tokens = await this.generateTokenPair(user);
+        const tokens = await this.tokenService.generatePair(user);
 
         // 7. Async side effects - fire and forget (don't await, don't block response)
         void this.notificationQueue.add(AUTH_QUEUE_JOBS.WELCOME_EMAIL, {
@@ -141,14 +137,7 @@ export class AuthService {
         return this.buildAuthResponse(user, tokens, false);
     }
 
-    /**
-     * Authenticate a credential-based user.
-     *
-     * @param dto Login payload.
-     * @param ip Caller IP address used for rate limiting.
-     * @returns Authentication response with user snapshot and tokens.
-     */
-
+    /** @inheritdoc */
     async login(dto: LoginDto, ip: string): Promise<AuthResponseDto> {
         // 1. Check login rate limit (5 failures / 15 min / IP+email)
         const attempts = await this.authRepository.getLoginAttempts(
@@ -176,7 +165,7 @@ export class AuthService {
         }
 
         // 3. Check account status before verifying password
-        if (user.account_status !== "active") {
+        if (user.account_status !== USERS_ACCOUNT_STATUS.ACTIVE) {
             throw new AccountNotActiveException(
                 user.account_status as InactiveAccountStatus,
             );
@@ -197,7 +186,7 @@ export class AuthService {
         await this.authRepository.clearLoginAttempts(ip, dto.email);
 
         // 6. Generate token pair
-        const tokens = await this.generateTokenPair(user);
+        const tokens = await this.tokenService.generatePair(user);
 
         // 7. Publish login event to Pub/Sub
         const event: UserLoggedInEvent = {
@@ -205,20 +194,16 @@ export class AuthService {
             userId: user.id,
             timestamp: new Date().toISOString(),
         };
-        void this.redis.publish(AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL, JSON.stringify(event));
+        void this.redis.publish(
+            AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
+            JSON.stringify(event),
+        );
 
         // 8. Return response
         return this.buildAuthResponse(user, tokens, false);
     }
 
-    /**
-     * Authenticate a user via OAuth authorization code flow.
-     *
-     * @param provider OAuth provider identifier.
-     * @param code Provider authorization code.
-     * @returns Authentication response with user snapshot and tokens.
-     */
-
+    /** @inheritdoc */
     async oauthLogin(provider: string, code: string): Promise<AuthResponseDto> {
         // 1. Validate provider
         if (
@@ -248,7 +233,9 @@ export class AuthService {
 
             if (existingUser) {
                 // 4a. Check account status before linking
-                if (existingUser.account_status !== "active") {
+                if (
+                    existingUser.account_status !== USERS_ACCOUNT_STATUS.ACTIVE
+                ) {
                     throw new AccountNotActiveException(
                         existingUser.account_status as InactiveAccountStatus,
                     );
@@ -262,9 +249,10 @@ export class AuthService {
                 user = existingUser;
             } else {
                 // 5. Neither found - create new user
-                const username = await this.generateUniqueUsername(
-                    profile.name,
-                );
+                const username =
+                    await this.usernameGeneratorService.generateUnique(
+                        profile.name,
+                    );
 
                 user = await this.authRepository.createOAuthUser({
                     email: profile.email,
@@ -289,14 +277,14 @@ export class AuthService {
         }
 
         // 6. Check account status of the resolved user
-        if (user.account_status !== "active") {
+        if (user.account_status !== USERS_ACCOUNT_STATUS.ACTIVE) {
             throw new AccountNotActiveException(
                 user.account_status as InactiveAccountStatus,
             );
         }
 
         // 7. Generate token pair
-        const tokens = await this.generateTokenPair(user);
+        const tokens = await this.tokenService.generatePair(user);
 
         // 8. Publish login event
         const event: UserLoggedInEvent = {
@@ -304,32 +292,26 @@ export class AuthService {
             userId: user.id,
             timestamp: new Date().toISOString(),
         };
-        void this.redis.publish(AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL, JSON.stringify(event));
+        void this.redis.publish(
+            AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
+            JSON.stringify(event),
+        );
 
         // 9. Return response with needs_onboarding flag
         return this.buildAuthResponse(user, tokens, needsOnboarding);
     }
 
-    /**
-     * Refresh an authenticated session by rotating the refresh token.
-     *
-     * @param dto Refresh-token payload.
-     * @returns Rotated access/refresh token pair.
-     */
-
+    /** @inheritdoc */
     async refreshToken(dto: RefreshTokenDto): Promise<RefreshResponseDto> {
         // 1. Verify refresh token signature and expiry (HS256)
-        let payload: { sub: string; family: string };
-        try {
-            payload = this.jwtService.verify<{ sub: string; family: string }>(
-                dto.refresh_token,
-                { secret: this.config.get<string>(AUTH_JWT.REFRESH_SECRET_ENV) },
-            );
-        } catch {
+        const tokenPayload = await this.tokenService.verifyRefreshToken(
+            dto.refresh_token,
+        );
+        if (!tokenPayload) {
             throw new SessionExpiredException();
         }
 
-        const { sub: userId, family: tokenFamily } = payload;
+        const { userId, tokenFamily } = tokenPayload;
 
         // Validate token_family from body matches the one in the JWT
         if (tokenFamily !== dto.token_family) {
@@ -361,60 +343,37 @@ export class AuthService {
         if (!user) {
             throw new SessionExpiredException();
         }
-        if (user.account_status !== "active") {
+        if (user.account_status !== USERS_ACCOUNT_STATUS.ACTIVE) {
             throw new AccountNotActiveException(
                 user.account_status as InactiveAccountStatus,
             );
         }
 
         // 5. Rotate refresh token - old key deleted, new value stored under same family
-        const newRefreshToken = this.jwtService.sign(
-            { sub: userId, family: tokenFamily },
-            {
-                secret: this.config.get<string>(AUTH_JWT.REFRESH_SECRET_ENV),
-                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.REFRESH_TTL_ENV) ?? AUTH_TTL.REFRESH_TOKEN_SECONDS, 10),
-                algorithm: AUTH_JWT.REFRESH_ALGORITHM,
-            },
-        );
-
-        const newHash = await hashValue(newRefreshToken, AUTH_BCRYPT_ROUNDS.TOKEN);
-        await this.authRepository.rotateRefreshToken(
+        const newRefreshToken = await this.tokenService.generateRefreshToken(
             userId,
             tokenFamily,
-            newHash,
+        );
+
+        await this.tokenService.rotateAndStore(
+            userId,
+            tokenFamily,
+            newRefreshToken,
         );
 
         // 6 & 7. Sign new access token
-        const newAccessToken = this.jwtService.sign(
-            {
-                sub: user.id,
-                role: user.role,
-                username: user.username,
-                tokenVersion: user.token_version,
-            },
-            {
-                privateKey: this.config.get<string>(AUTH_JWT.PRIVATE_KEY_ENV),
-                algorithm: AUTH_JWT.ALGORITHM,
-                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
-            },
-        );
+        const newAccessToken =
+            await this.tokenService.generateAccessToken(user);
 
         return {
             access_token: newAccessToken,
             refresh_token: newRefreshToken,
             token_family: tokenFamily,
-            expires_in: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
+            expires_in: this.tokenService.getAccessTokenTtl(),
         };
     }
 
-    /**
-     * Revoke one authenticated session by token family.
-     *
-     * @param userId Authenticated user UUID.
-     * @param tokenFamily Token-family UUID.
-     * @returns Success message.
-     */
-
+    /** @inheritdoc */
     async logout(
         userId: string,
         tokenFamily: string,
@@ -427,7 +386,10 @@ export class AuthService {
             userId,
             timestamp: new Date().toISOString(),
         };
-        void this.redis.publish(AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL, JSON.stringify(event));
+        void this.redis.publish(
+            AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
+            JSON.stringify(event),
+        );
 
         return { message: AUTH_MESSAGES.LOGGED_OUT };
     }
@@ -450,13 +412,7 @@ export class AuthService {
         return { message: AUTH_MESSAGES.ALL_SESSIONS_TERMINATED };
     }
 
-    /**
-     * Retrieve the authenticated user's profile payload.
-     *
-     * @param userId Authenticated user UUID.
-     * @returns Detailed authenticated user profile.
-     */
-
+    /** @inheritdoc */
     async getMe(userId: string): Promise<MeResponseDto> {
         const user = await this.authRepository.findById(userId);
 
@@ -484,81 +440,6 @@ export class AuthService {
     }
 
     /**
-     * Generate and persist a new access/refresh token pair.
-     *
-     * @param user Authenticated user entity.
-     * @returns Signed access token, refresh token, and token-family ID.
-     */
-
-    private async generateTokenPair(user: User): Promise<TokenPair> {
-        // 1. Sign access token - RS256, 15 min
-        const access_token = this.jwtService.sign(
-            {
-                sub: user.id,
-                role: user.role,
-                username: user.username,
-                tokenVersion: user.token_version,
-            },
-            {
-                privateKey: this.config.get<string>(AUTH_JWT.PRIVATE_KEY_ENV),
-                algorithm: AUTH_JWT.ALGORITHM,
-                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
-            },
-        );
-
-        // 2. Generate new token family UUID
-        const token_family = uuidv7();
-
-        // 3. Sign refresh token - HS256, 30 days
-        const refresh_token = this.jwtService.sign(
-            { sub: user.id, family: token_family },
-            {
-                secret: this.config.get<string>(AUTH_JWT.REFRESH_SECRET_ENV),
-                algorithm: AUTH_JWT.REFRESH_ALGORITHM,
-                expiresIn: parseInt(this.config.get<string>(AUTH_JWT.REFRESH_TTL_ENV) ?? AUTH_TTL.REFRESH_TOKEN_SECONDS, 10)
-            },
-        );
-
-        // 4. Hash the raw refresh token before storing - cost 10 (tokens, not passwords)
-        const hash = await hashValue(refresh_token, AUTH_BCRYPT_ROUNDS.TOKEN);
-
-        // 5. Store hash in Redis with 30-day TTL
-        await this.authRepository.storeRefreshToken(
-            user.id,
-            token_family,
-            hash,
-        );
-
-        return { access_token, refresh_token, token_family };
-    }
-
-    /**
-     * Produce a sanitized unique username candidate from a display name.
-     *
-     * @param name Source display name.
-     * @returns Unique username string.
-     */
-
-    private async generateUniqueUsername(name: string): Promise<string> {
-        // Sanitise: lowercase, spaces -> underscore, remove special chars
-        const base = name
-            .toLowerCase()
-            .replace(/\s+/g, "_")
-            .replace(/[^a-z0-9_]/g, "")
-            .slice(0, 46); // leave room for _XXXX suffix
-
-        let attempt = base || "user";
-
-        // Loop until we find a unique username
-        while (await this.authRepository.existsByUsername(attempt)) {
-            const suffix = Math.floor(1000 + Math.random() * 9000); // 4-digit number
-            attempt = `${base}_${suffix}`;
-        }
-
-        return attempt;
-    }
-
-    /**
      * Map user and token data into the public auth response envelope.
      *
      * @param user Authenticated user entity.
@@ -566,10 +447,13 @@ export class AuthService {
      * @param needsOnboarding Whether the client should continue onboarding.
      * @returns API-facing authentication response DTO.
      */
-
     private buildAuthResponse(
         user: User,
-        tokens: TokenPair,
+        tokens: {
+            access_token: string;
+            refresh_token: string;
+            token_family: string;
+        },
         needsOnboarding: boolean,
     ): AuthResponseDto {
         return {
@@ -588,7 +472,7 @@ export class AuthService {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
             token_family: tokens.token_family,
-            expires_in: parseInt(this.config.get<string>(AUTH_JWT.ACCESS_TTL_ENV) ?? AUTH_TTL.ACCESS_TOKEN_SECONDS, 10),
+            expires_in: this.tokenService.getAccessTokenTtl(),
             needs_onboarding: needsOnboarding,
         };
     }

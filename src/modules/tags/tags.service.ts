@@ -12,6 +12,7 @@
 
 import { Injectable } from "@nestjs/common";
 import { RedisService } from "@redis/redis.service";
+import { TagsService } from "./tags.service.abstract";
 import { TagsRepository } from "./tags.repository";
 import { CreateTagDto } from "./dto/create-tag.dto";
 import { UpdateTagDto } from "./dto/update-tag.dto";
@@ -25,7 +26,7 @@ import { TAGS_MODULE_CONSTANTS, TAGS_REDIS_KEYS } from "./tags.constants";
  * Handles all business logic for tag catalogue reads and admin writes.
  */
 @Injectable()
-export class TagsService {
+export class TagsServiceImpl extends TagsService {
     /**
      * @param tagsRepository Tag persistence and cache repository.
      * @param redis          Redis client used for Pub/Sub publishing.
@@ -33,16 +34,15 @@ export class TagsService {
     constructor(
         private readonly tagsRepository: TagsRepository,
         private readonly redis: RedisService,
-    ) {}
+    ) {
+        super();
+    }
 
     /**
-     * Return all tags, optionally filtered by category.
-     * Results are served from cache when available (TTL 600 s).
-     * On a cache miss the DB is queried, reel counts are merged in a single
-     * bulk query, and the result is written back to cache before returning.
+     * 
+     * On a cache miss the DB is queried, reel counts are merged in a single bulk query, and the result is written back to cache before returning.
      *
-     * @param category Optional category filter (e.g. 'frontend', 'devops').
-     * @returns Paginated tag list with per-tag reel counts and total meta.
+     * @inheritdoc
      */
     async getAllTags(category?: string): Promise<TagListResponseDto> {
         const cacheKey = category
@@ -97,15 +97,7 @@ export class TagsService {
         };
     }
 
-    /**
-     * Return a single tag by its UUID, including reel count and timestamps.
-     * This endpoint is not cached - single-tag lookups are infrequent and
-     * including created_at breaks the shared list cache shape.
-     *
-     * @param id Tag UUID.
-     * @returns Full tag detail DTO with reel_count and created_at.
-     * @throws TagNotFoundException if no tag exists with this ID.
-     */
+    /** @inheritdoc */
     async getTagById(id: string): Promise<TagResponseDto> {
         // 1. Fetch tag - throws if not found
         const tag = await this.tagsRepository.findById(id);
@@ -127,13 +119,10 @@ export class TagsService {
     }
 
     /**
-     * Create a new tag in the admin-managed catalogue.
-     * Validates name uniqueness before insertion.
+     * 
      * Invalidates the tags:all and tags:category:{dto.category} cache keys.
      *
-     * @param dto Validated creation payload (name, category).
-     * @returns Created tag DTO with id, name, category, and created_at.
-     * @throws TagConflictException if a tag with this name already exists.
+     * @inheritdoc
      */
     async createTag(dto: CreateTagDto): Promise<TagResponseDto> {
         // 1. Uniqueness check
@@ -162,17 +151,11 @@ export class TagsService {
     }
 
     /**
-     * Update an existing tag's name and/or category.
-     * Uses an ownership-aware uniqueness check to prevent false 409 when
-     * an admin submits the tag's current name unchanged.
+     * 
      * Invalidates the relevant cache keys and publishes TAG_UPDATED to
      * the content_events Pub/Sub channel (fire-and-forget).
      *
-     * @param id  Tag UUID to update.
-     * @param dto Validated partial update payload (name and/or category optional).
-     * @returns Updated tag DTO with id, name, category, and updated_at.
-     * @throws TagNotFoundException    if no tag exists with this ID.
-     * @throws TagConflictException    if dto.name is already held by a different tag.
+     * @inheritdoc
      */
     async updateTag(id: string, dto: UpdateTagDto): Promise<TagResponseDto> {
         // 1. Fetch existing tag - throws if not found

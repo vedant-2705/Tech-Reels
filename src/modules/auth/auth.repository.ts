@@ -8,6 +8,7 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { BaseRepository } from "@database/base.repository";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 import { ExperienceLevel, User } from "./entities/user.entity";
 import { AUTH_REDIS_KEYS, AUTH_TTL, OAuthProvider } from "./auth.constants";
@@ -36,17 +37,20 @@ interface LinkOAuthAccountData {
 
 /**
  * Repository for auth-specific reads and writes against the database and Redis.
+ * Extends BaseRepository for typed query helpers and cache primitives.
  */
 @Injectable()
-export class AuthRepository {
+export class AuthRepository extends BaseRepository {
     /**
      * @param db PostgreSQL database service.
      * @param redis Redis service for auth cache and session state.
      */
     constructor(
-        private readonly db: DatabaseService,
-        private readonly redis: RedisService,
-    ) {}
+        db: DatabaseService,
+        redis: RedisService,
+    ) {
+        super(db, redis);
+    }
 
     /**
      * Check whether an active user exists for the given email.
@@ -56,14 +60,10 @@ export class AuthRepository {
      */
 
     async existsByEmail(email: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-         SELECT 1 FROM users
-         WHERE email = $1 AND deleted_at IS NULL
-       ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND deleted_at IS NULL) AS exists`,
             [email],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
@@ -73,28 +73,29 @@ export class AuthRepository {
      * @returns true when a non-deleted user exists.
      */
     async existsByUsername(username: string): Promise<boolean> {
-        const result = await this.db.query<{ exists: boolean }>(
-            `SELECT EXISTS(
-         SELECT 1 FROM users
-         WHERE username = $1 AND deleted_at IS NULL
-       ) AS exists`,
+        return await this.existsWhere(
+            `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND deleted_at IS NULL) AS exists`,
             [username],
         );
-        return result.rows[0]?.exists ?? false;
     }
 
     /**
      * Returns only the IDs that actually exist in the tags table.
-        *
-        * @param tagIds Candidate topic IDs.
-        * @returns Matching tag IDs found in persistence.
+     * Used during registration to validate onboarding topic selections.
+     *
+     * @deprecated Phase 5 - this will be replaced by injecting TagValidator
+     *             (a narrow ISP-compliant abstract class) so auth module no
+     *             longer needs a cross-module DB call inside AuthRepository.
+     * @param tagIds Candidate topic IDs.
+     * @returns Matching tag IDs found in persistence.
      */
     async validateTagIds(tagIds: string[]): Promise<string[]> {
-        const result = await this.db.query<{ id: string }>(
+        if (!tagIds.length) return [];
+        const rows = await this.findMany<{ id: string }>(
             `SELECT id FROM tags WHERE id = ANY($1)`,
             [tagIds],
         );
-        return result.rows.map((r) => r.id);
+        return rows.map((r) => r.id);
     }
 
     /**
@@ -106,13 +107,10 @@ export class AuthRepository {
     async createUserWithAffinity(
         data: CreateUserWithAffinityData,
     ): Promise<User> {
-        const client = await this.db.getClient();
         const id = uuidv7();
         const now = new Date().toISOString();
 
-        try {
-            await client.query("BEGIN");
-
+        return await this.db.withTransaction(async (client) => {
             const userResult = await client.query<User>(
                 `INSERT INTO users (
                     id, email, password_hash, username, role,
@@ -125,36 +123,27 @@ export class AuthRepository {
                     0, 0, 0,
                     $6, $6
                 ) RETURNING *`,
-                [
-                    id,
-                    data.email,
-                    data.password_hash,
-                    data.username,
-                    data.experience_level,
-                    now,
-                ],
+                [id, data.email, data.password_hash, data.username, data.experience_level, now],
             );
 
             const user = userResult.rows[0];
 
-            // Seed affinity scores - one row per topic, score = 1.0
-            for (const tagId of data.topics) {
+            // Seed affinity scores - bulk insert for all topics
+            if (data.topics.length > 0) {
+                const values = data.topics
+                    .map((_, i) => `($1, $${i + 2}, 1.0, $${data.topics.length + 2})`)
+                    .join(", ");
                 await client.query(
                     `INSERT INTO user_topic_affinity (user_id, tag_id, score, updated_at)
-           VALUES ($1, $2, 1.0, $3)`,
-                    [id, tagId, now],
+                     VALUES ${values}`,
+                    [id, ...data.topics, now],
                 );
             }
 
-            await client.query("COMMIT");
             return user;
-        } catch (err) {
-            await client.query("ROLLBACK");
-            throw err;
-        } finally {
-            client.release();
-        }
+        });
     }
+
 
     /**
      * Fetch an active user by email address.
@@ -164,7 +153,7 @@ export class AuthRepository {
      */
 
     async findByEmail(email: string): Promise<User | null> {
-        const result = await this.db.query<User>(
+        return await this.findOne<User>(
             `SELECT
          id, email, password_hash, account_status,
          token_version, username, role, experience_level,
@@ -174,7 +163,6 @@ export class AuthRepository {
        WHERE email = $1 AND deleted_at IS NULL`,
             [email],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -184,7 +172,7 @@ export class AuthRepository {
      * @returns Matching user or null.
      */
     async findById(userId: string): Promise<User | null> {
-        const result = await this.db.query<User>(
+        return await this.findOne<User>(
             `SELECT
          id, email, account_status, token_version,
          role, username, experience_level, total_xp,
@@ -195,7 +183,6 @@ export class AuthRepository {
        WHERE id = $1 AND deleted_at IS NULL`,
             [userId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -209,7 +196,7 @@ export class AuthRepository {
         provider: string,
         providerUserId: string,
     ): Promise<User | null> {
-        const result = await this.db.query<User>(
+        return await this.findOne<User>(
             `SELECT u.*
        FROM users u
        JOIN oauth_accounts oa ON oa.user_id = u.id
@@ -218,7 +205,6 @@ export class AuthRepository {
          AND u.deleted_at IS NULL`,
             [provider, providerUserId],
         );
-        return result.rows[0] ?? null;
     }
 
     /**
@@ -244,44 +230,36 @@ export class AuthRepository {
         * @returns Newly created user entity.
      */
     async createOAuthUser(data: CreateOAuthUserData): Promise<User> {
-        const client = await this.db.getClient();
         const userId = uuidv7();
         const oauthId = uuidv7();
         const now = new Date().toISOString();
 
-        try {
-            await client.query("BEGIN");
-
+        return await this.db.withTransaction(async (client) => {
             const userResult = await client.query<User>(
                 `INSERT INTO users (
-           id, email, password_hash, username, avatar_url,
-           role, experience_level, account_status,
-           token_version, total_xp, current_streak,
-           token_balance, created_at, updated_at
-         ) VALUES (
-           $1, $2, NULL, $3, $4,
-           'user', 'novice', 'active',
-           0, 0, 0,
-           0, $5, $5
-         ) RETURNING *`,
+                   id, email, password_hash, username, avatar_url,
+                   role, experience_level, account_status,
+                   token_version, total_xp, current_streak,
+                   token_balance, created_at, updated_at
+                 ) VALUES (
+                   $1, $2, NULL, $3, $4,
+                   'user', 'novice', 'active',
+                   0, 0, 0,
+                   0, $5, $5
+                 ) RETURNING *`,
                 [userId, data.email, data.username, data.avatar_url, now],
             );
 
             await client.query(
                 `INSERT INTO oauth_accounts (id, user_id, provider, provider_user_id, linked_at)
-         VALUES ($1, $2, $3, $4, now())`,
+                 VALUES ($1, $2, $3, $4, now())`,
                 [oauthId, userId, data.provider, data.provider_user_id],
             );
 
-            await client.query("COMMIT");
             return userResult.rows[0];
-        } catch (err) {
-            await client.query("ROLLBACK");
-            throw err;
-        } finally {
-            client.release();
-        }
+        });
     }
+
 
     /**
      * Increments token_version in DB and evicts the Redis cache entry.

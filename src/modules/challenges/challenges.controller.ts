@@ -33,7 +33,7 @@ import {
     ApiHeader,
 } from "@nestjs/swagger";
 
-import { ChallengesService } from "./challenges.service";
+import { ChallengesService } from "./challenges.service.abstract";
 import { ChallengeResponseDto } from "./dto/challenge-response.dto";
 import { SubmitAttemptDto } from "./dto/submit-attempt.dto";
 import { AttemptResultDto } from "./dto/attempt-result.dto";

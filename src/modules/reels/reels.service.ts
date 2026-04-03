@@ -24,6 +24,7 @@ import { ConfigService } from "@nestjs/config";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 
+import { ReelsService } from "./reels.service.abstract";
 import { ReelsRepository } from "./reels.repository";
 import { RedisService } from "@redis/redis.service";
 import { S3Service } from "@s3/s3.service";
@@ -90,7 +91,7 @@ import { LikedReelsPaginatedResponseDto } from "./dto/liked-reels-paginated-resp
  * Orchestrates all Reels workflows, side effects, and cache management.
  */
 @Injectable()
-export class ReelsService {
+export class ReelsServiceImpl extends ReelsService {
     private readonly logger = new Logger(ReelsService.name);
 
     /**
@@ -110,17 +111,13 @@ export class ReelsService {
         private readonly videoProcessingQueue: Queue,
         @InjectQueue(QUEUES.FEED_BUILD)
         private readonly feedBuildQueue: Queue,
-    ) {}
+    ) {
+        super();
+    }
 
     // Endpoint 1 - POST /reels
 
-    /**
-     * Initiate a reel upload: validate tags, insert reel row, generate presigned S3 PUT URL.
-     *
-     * @param userId Authenticated creator's user UUID.
-     * @param dto Create reel payload.
-     * @returns Presigned upload URL, reel ID, raw S3 key, and expiry timestamp.
-     */
+    /** @inheritdoc */
     async createReel(
         userId: string,
         dto: CreateReelDto,
@@ -184,14 +181,7 @@ export class ReelsService {
 
     // Endpoint 2 - POST /reels/:id/confirm
 
-    /**
-     * Confirm a completed S3 upload and queue video processing.
-     *
-     * @param userId Authenticated creator's user UUID.
-     * @param reelId Reel UUID from the route parameter.
-     * @param dto Confirm payload containing raw_key.
-     * @returns Reel ID, new status, and confirmation message.
-     */
+    /** @inheritdoc */
     async confirmReel(
         userId: string,
         reelId: string,
@@ -258,16 +248,7 @@ export class ReelsService {
 
     // Endpoint 3 - PATCH /reels/:id
 
-    /**
-     * Update mutable fields of a reel owned by the authenticated user.
-     * If tag_ids are provided, all existing tags are replaced.
-     * Only reels with status uploading | active | failed may be updated.
-     *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID from route parameter.
-     * @param dto Partial update payload.
-     * @returns Updated reel as ReelResponseDto.
-     */
+    /** @inheritdoc */
     async updateReel(
         userId: string,
         reelId: string,
@@ -309,9 +290,7 @@ export class ReelsService {
         // Replace tags if provided
         if (newTagIds) {
             // Remove old tag IDs from Redis Sets (SREM)
-            for (const tag of oldTags) {
-                await this.reelsRepository.removeFromTagSet(tag.id, reelId);
-            }
+            await this.reelsRepository.bulkRemoveFromTagSets(oldTags.map((t) => t.id), reelId);
 
             // Replace DB tag associations
             await this.reelsRepository.deleteReelTags(reelId);
@@ -319,9 +298,7 @@ export class ReelsService {
 
             // Add new tag IDs to Redis Sets only if reel is active (SADD)
             if (reel.status === REEL_STATUS.ACTIVE) {
-                for (const tagId of newTagIds) {
-                    await this.reelsRepository.addToTagSet(tagId, reelId);
-                }
+                await this.reelsRepository.bulkAddToTagSets(newTagIds, reelId);
             }
 
             // Invalidate tags cache (reel counts changed)
@@ -338,13 +315,7 @@ export class ReelsService {
 
     // Endpoint 4 - DELETE /reels/:id
 
-    /**
-     * Soft-delete a reel owned by the authenticated user.
-     *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID from route parameter.
-     * @returns Success message.
-     */
+    /** @inheritdoc */
     async deleteReel(
         userId: string,
         reelId: string,
@@ -360,9 +331,7 @@ export class ReelsService {
         await this.reelsRepository.deleteMetaCache(reelId);
 
         // Remove from tag sets in Redis (SREM)
-        for (const tag of reel.tags) {
-            await this.reelsRepository.removeFromTagSet(tag.id, reelId);
-        }
+        await this.reelsRepository.bulkRemoveFromTagSets(reel.tags.map((t) => t.id), reelId);
 
         // Invalidate tags cache
         await this.invalidateTagsCache();
@@ -383,14 +352,7 @@ export class ReelsService {
 
     // Endpoint 5 - GET /reels/me
 
-    /**
-     * Return a paginated list of the authenticated creator's own reels.
-     * Returns all statuses (uploading, processing, active, failed, etc.).
-     *
-     * @param userId Authenticated user UUID.
-     * @param query Cursor pagination and optional status filter.
-     * @returns Paginated reel list with cursor metadata.
-     */
+    /** @inheritdoc */
     async getMyReels(
         userId: string,
         query: MyReelsQueryDto,
@@ -421,7 +383,6 @@ export class ReelsService {
     // Endpoint 6 - GET /reels/feed
 
     /**
-     * Return the authenticated user's personalised feed from Redis List cache.
      *
      * Cold cache (empty list): enqueues feed_build job and falls back to
      * active reels from DB. next_cursor returns 0 so the client retries
@@ -431,9 +392,7 @@ export class ReelsService {
      * to feed_events channel (fire and forget). Never adds feed_build job
      * directly except on cold start.
      *
-     * @param userId Authenticated user UUID.
-     * @param query Integer cursor and limit.
-     * @returns Paginated feed items with is_liked / is_saved flags.
+     * @inheritdoc
      */
     async getFeed(
         userId: string,
@@ -549,14 +508,7 @@ export class ReelsService {
             },
         };
     }
-    /**
-     * Return a single reel by ID (public, unauthenticated).
-     * Only active reels are visible - any other status returns 404.
-     * Serves from reel:meta cache when warm; populates cache on miss.
-     *
-     * @param reelId Reel UUID from route parameter.
-     * @returns ReelResponseDto for active reels.
-     */
+    /** @inheritdoc */
     async getReelById(reelId: string): Promise<ReelResponseDto> {
         // Try cache first
         const cached = await this.reelsRepository.getMetaFromCache(reelId);
@@ -580,17 +532,11 @@ export class ReelsService {
     // Endpoint 8 - POST /reels/:id/watch
 
     /**
-     * Record a watch event for a reel. Returns 204 immediately.
-     * All side effects (DB write, Bloom filter, view count) are async
-     * via the REEL_WATCH_ENDED pub/sub event - nothing is awaited.
      *
      * BF.ADD and HINCRBY are performed here as fire-and-forget side effects
      * via the pub/sub subscriber. The Reels module publishes the event only.
      *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID from route parameter.
-     * @param dto Watch telemetry payload.
-     * @returns void (controller sends 204).
+     * @inheritdoc
      */
     async watchReel(
         userId: string,
@@ -626,13 +572,7 @@ export class ReelsService {
 
     // Endpoints 9-10 - Like / Unlike
 
-    /**
-     * Like a reel. Silently idempotent (ON CONFLICT DO NOTHING).
-     *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID.
-     * @returns liked flag.
-     */
+    /** @inheritdoc */
     async likeReel(
         userId: string,
         reelId: string,
@@ -663,13 +603,7 @@ export class ReelsService {
         return { liked: true };
     }
 
-    /**
-     * Remove a like from a reel.
-     *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID.
-     * @returns liked flag set to false.
-     */
+    /** @inheritdoc */
     async unlikeReel(
         userId: string,
         reelId: string,
@@ -701,13 +635,7 @@ export class ReelsService {
 
     // Endpoints 11-12 - Save / Unsave
 
-    /**
-     * Save a reel. Silently idempotent.
-     *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID.
-     * @returns saved flag.
-     */
+    /** @inheritdoc */
     async saveReel(
         userId: string,
         reelId: string,
@@ -736,13 +664,7 @@ export class ReelsService {
         return { saved: true };
     }
 
-    /**
-     * Remove a saved reel.
-     *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID.
-     * @returns saved flag set to false.
-     */
+    /** @inheritdoc */
     async unsaveReel(
         userId: string,
         reelId: string,
@@ -773,14 +695,7 @@ export class ReelsService {
 
     // Endpoint 13 - POST /reels/:id/report
 
-    /**
-     * Submit a report for a reel. One report per user per reel (silent dedup).
-     *
-     * @param userId Authenticated reporter user UUID.
-     * @param reelId Reported reel UUID.
-     * @param dto Report payload.
-     * @returns Success message.
-     */
+    /** @inheritdoc */
     async reportReel(
         userId: string,
         reelId: string,
@@ -802,16 +717,15 @@ export class ReelsService {
     // Endpoint 14 - PATCH /reels/:id/status (Admin)
 
     /**
-     * Admin: update reel status. Manages tag set membership in Redis and
-     * invalidates reel meta cache.
+     * Admin: update reel status. Manages tag set membership in Redis and invalidates reel meta cache.
      *
-     * status -> active:      SADD reel to each tag's Redis Set.
-     * status -> disabled:    SREM reel from each tag's Redis Set.
-     * status -> needs_review: no tag set change (reel stays in sets).
+     * `status -> active`: SADD reel to each tag's Redis Set.
+     * 
+     * `status -> disabled`: SREM reel from each tag's Redis Set.
+     * 
+     * `status -> needs_review`: no tag set change (reel stays in sets).
      *
-     * @param reelId Reel UUID.
-     * @param dto Admin status update payload.
-     * @returns Updated reel id, status, and updated_at.
+     * @inheritdoc
      */
     async adminUpdateStatus(
         reelId: string,
@@ -831,15 +745,11 @@ export class ReelsService {
 
         // Manage Redis tag sets based on new status
         if (dto.status === REEL_STATUS.ACTIVE) {
-            for (const tag of reel.tags) {
-                await this.reelsRepository.addToTagSet(tag.id, reelId);
-            }
+            await this.reelsRepository.bulkAddToTagSets(reel.tags.map((t) => t.id), reelId);
             // New active reel - invalidate tags cache (reel_count changed)
             await this.invalidateTagsCache();
         } else if (dto.status === REEL_STATUS.DISABLED) {
-            for (const tag of reel.tags) {
-                await this.reelsRepository.removeFromTagSet(tag.id, reelId);
-            }
+            await this.reelsRepository.bulkRemoveFromTagSets(reel.tags.map((t) => t.id), reelId);
             // Reel removed from active pool - invalidate tags cache
             await this.invalidateTagsCache();
         }
@@ -865,12 +775,7 @@ export class ReelsService {
 
     // Endpoint 15 - GET /reels/admin (Admin)
 
-    /**
-     * Admin: list all reels with optional filtering. Supports cursor pagination.
-     *
-     * @param query Admin list query params (status, creator_id, cursor, limit).
-     * @returns Paginated reel list with cursor metadata.
-     */
+    /** @inheritdoc */
     async adminGetReels(
         query: AdminGetReelsDto,
     ): Promise<AdminReelsPaginatedResponseDto> {
@@ -898,15 +803,12 @@ export class ReelsService {
     // Endpoint - POST /reels/:id/share
 
     /**
-     * Record a share action for an active reel.
-     * Increments share_count in DB and Redis cache.
+     * 
      * Publishes REEL_SHARED event to user_interactions channel.
      * Enqueues feed build job signalling interest in the reel's tags.
      * NOT idempotent - each call increments share_count.
      *
-     * @param userId Authenticated user UUID.
-     * @param reelId Reel UUID from route parameter.
-     * @returns shared flag and shareable URL.
+     * @inheritdoc
      */
     async shareReel(
         userId: string,
@@ -958,14 +860,12 @@ export class ReelsService {
     // Endpoint - GET /reels/liked
 
     /**
-     * Return a paginated list of reels the authenticated user has liked.
-     * Active reels only, most recently liked first.
+     * 
      * Compound base64 cursor on (liked_reels.created_at, reel_id).
+     * 
      * is_liked is always true on this list. is_saved is fetched via bulkIsSaved.
      *
-     * @param userId Authenticated user UUID.
-     * @param query Cursor and limit query params.
-     * @returns Paginated liked reels with interaction flags.
+     * @inheritdoc
      */
     async getLikedReels(
         userId: string,
@@ -1016,14 +916,12 @@ export class ReelsService {
     // Endpoint - GET /reels/saved
 
     /**
-     * Return a paginated list of reels the authenticated user has saved.
-     * Active reels only, most recently saved first.
+     * 
      * Compound base64 cursor on (saved_reels.created_at, reel_id).
+     * 
      * is_saved is always true on this list. is_liked is fetched via bulkIsLiked.
      *
-     * @param userId Authenticated user UUID.
-     * @param query Cursor and limit query params.
-     * @returns Paginated saved reels with interaction flags.
+     * @inheritdoc
      */
     async getSavedReels(
         userId: string,
@@ -1074,13 +972,12 @@ export class ReelsService {
     // Endpoint - GET /reels/search
 
     /**
-     * Search reels by plain-text query matched against tag names and categories.
+     * 
      * Flow: match tags -> SUNION Redis Sets -> BF filter watched -> DB sort by view_count.
+     * 
      * Falls back to popular active reels when no tags match the query.
      *
-     * @param userId Authenticated user UUID.
-     * @param dto Search query params (q, cursor, limit).
-     * @returns Paginated search results with matched tag metadata.
+     * @inheritdoc
      */
     async searchReels(
         userId: string,
@@ -1095,23 +992,11 @@ export class ReelsService {
         // no tag match -> popular active reels fallback
         if (matchedTags.length === 0) {
             const fallback = await this.reelsRepository.findActive(limit);
-            // const fallbackIds = fallback.map((r) => r.id);
-            // const [likedIds, savedIds] = await Promise.all([
-            //     this.reelsRepository.bulkIsLiked(userId, fallbackIds),
-            //     this.reelsRepository.bulkIsSaved(userId, fallbackIds),
-            // ]);
-            // const likedSet = new Set(likedIds);
-            // const savedSet = new Set(savedIds);
 
             const fallbackReelsMapped =
                 await this.annotateReelsWithInteractions(userId, fallback);
 
             return {
-                // data: fallback.map((r) => ({
-                //     ...this.toReelResponseDto(r),
-                //     is_liked: likedSet.has(r.id),
-                //     is_saved: savedSet.has(r.id),
-                // })),
                 data: fallbackReelsMapped,
                 meta: { next_cursor: null, has_more: false },
                 matched_tags: [],
@@ -1139,23 +1024,11 @@ export class ReelsService {
             // DB also empty -> truly no active reels for these tags -> popular fallback
             if (dbCandidateIds.length === 0) {
                 const fallback = await this.reelsRepository.findActive(limit);
-                // const fallbackIds = fallback.map((r) => r.id);
-                // const [likedIds, savedIds] = await Promise.all([
-                //     this.reelsRepository.bulkIsLiked(userId, fallbackIds),
-                //     this.reelsRepository.bulkIsSaved(userId, fallbackIds),
-                // ]);
-                // const likedSet = new Set(likedIds);
-                // const savedSet = new Set(savedIds);
 
                 const fallbackReelsMapped =
                     await this.annotateReelsWithInteractions(userId, fallback);
 
                 return {
-                    // data: fallback.map((r) => ({
-                    //     ...this.toReelResponseDto(r),
-                    //     is_liked: likedSet.has(r.id),
-                    //     is_saved: savedSet.has(r.id),
-                    // })),
                     data: fallbackReelsMapped,
                     meta: { next_cursor: null, has_more: false },
                     matched_tags: matchedTags,
@@ -1199,15 +1072,6 @@ export class ReelsService {
         const hasMore = reels.length > limit;
         const page = reels.slice(0, limit);
 
-        // bulk is_liked / is_saved
-        // const pageIds = page.map((r) => r.id);
-        // const [likedIds, savedIds] = await Promise.all([
-        //     this.reelsRepository.bulkIsLiked(userId, pageIds),
-        //     this.reelsRepository.bulkIsSaved(userId, pageIds),
-        // ]);
-        // const likedSet = new Set(likedIds);
-        // const savedSet = new Set(savedIds);
-
         const pageReelsMapped = await this.annotateReelsWithInteractions(
             userId,
             page,
@@ -1221,11 +1085,6 @@ export class ReelsService {
         });
 
         return {
-            // data: page.map((r) => ({
-            //     ...this.toReelResponseDto(r),
-            //     is_liked: likedSet.has(r.id),
-            //     is_saved: savedSet.has(r.id),
-            // })),
             data: pageReelsMapped,
             meta: {
                 next_cursor: hasMore ? offset + limit : null,
@@ -1237,12 +1096,7 @@ export class ReelsService {
 
     // Endpoint- GET /reels/creator/:creatorId
     
-    /**
-     * Get all active reels by a specific creator. Public endpoint, no auth required.
-     *
-     * @param creatorId Creator user UUID from route parameter.
-     * @returns List of active reels by the creator.
-     */
+    /** @inheritdoc */
     async getReelsByCreator(creatorId: string, query: MyReelsQueryDto): Promise<MyReelsPaginatedResponseDto> {
         const limit = query.limit ?? 20;
 
