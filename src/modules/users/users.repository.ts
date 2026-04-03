@@ -11,7 +11,7 @@ import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
 import { User } from "@modules/auth/entities/user.entity";
-import { USERS_REDIS_KEYS } from "./users.constants";
+import { USERS_CACHE_TTL_SECONDS, USERS_REDIS_KEYS } from "./users.constants";
 import {
     LEADERBOARD_WEEKLY_KEY_PREFIX,
     TOP_TAGS_KEY_PREFIX,
@@ -508,37 +508,6 @@ export class UsersRepository {
     }
 
     /**
-     * Resolve the user's weekly leaderboard rank via Redis.
-     * Reads the top tag from the top_tags:{userId} cache key, then calls
-     * ZREVRANK on the weekly leaderboard for that tag.
-     *
-     * @param userId User UUID.
-     * @returns 0-based rank integer, or null if not ranked or no top tag.
-     */
-    // async getLeaderboardRank(userId: string): Promise<number | null> {
-    //     const topTagsRaw = await this.redis.get(`${TOP_TAGS_KEY_PREFIX}:${userId}`);
-    //     if (!topTagsRaw) return null;
-
-    //     // topTagsRaw is expected to be a JSON array of tag IDs ordered by score
-    //     let tagIds: string[];
-    //     try {
-    //         tagIds = JSON.parse(topTagsRaw) as string[];
-    //     } catch {
-    //         return null;
-    //     }
-
-    //     const topTagId = tagIds[0];
-    //     if (!topTagId) return null;
-
-    //     const rank = await this.redis.zrevrank(
-    //         `${LEADERBOARD_WEEKLY_KEY_PREFIX}:${topTagId}`,
-    //         userId,
-    //     );
-
-    //     return rank ?? null;
-    // }
-
-    /**
      * Resolve the user's top affinity tag ID. Reads from top_tags:{userId}
      * cache first. On cache miss, falls back to user_topic_affinity table,
      * then re-caches the result for 1 hour.
@@ -578,7 +547,7 @@ export class UsersRepository {
         await this.redis.set(
             `${USERS_REDIS_KEYS.TOP_TAGS_PREFIX}:${userId}`,
             JSON.stringify(tagIds),
-            USERS_REDIS_KEYS.TOP_TAGS_TTL,
+            USERS_CACHE_TTL_SECONDS.TOP_TAGS_TTL,
         );
 
         return tagIds[0];
@@ -596,12 +565,10 @@ export class UsersRepository {
         userId: string,
         tagId: string,
     ): Promise<number | null> {
-        console.log(tagId);
         const rank = await this.redis.zrevrank(
             `${USERS_REDIS_KEYS.LEADERBOARD_PREFIX}:${tagId}`,
             userId,
         );
-        console.log(rank);
         return rank ?? null;
     }
 
@@ -732,7 +699,7 @@ export class UsersRepository {
         await this.redis.set(
             `${USERS_REDIS_KEYS.AVATAR_PENDING_PREFIX}:${userId}`,
             avatarKey,
-            600,
+            USERS_CACHE_TTL_SECONDS.PENDING_AVATAR,
         );
     }
 

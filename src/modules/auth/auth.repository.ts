@@ -6,9 +6,9 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import { DatabaseService } from "../../database/database.service";
-import { RedisService } from "../../redis/redis.service";
-import { uuidv7 } from "../../common/utils/uuidv7.util";
+import { DatabaseService } from "@database/database.service";
+import { RedisService } from "@redis/redis.service";
+import { uuidv7 } from "@common/utils/uuidv7.util";
 import { ExperienceLevel, User } from "./entities/user.entity";
 import { AUTH_REDIS_KEYS, AUTH_TTL, OAuthProvider } from "./auth.constants";
 

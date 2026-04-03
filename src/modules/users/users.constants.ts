@@ -14,7 +14,15 @@ export const USERS_REDIS_KEYS = {
     FEED_QUEUE_PREFIX: "feed_queue",
     TOP_TAGS_PREFIX: "top_tags",
     LEADERBOARD_PREFIX: "leaderboard:weekly",
+} as const;
+
+/**
+ * TTL values (in seconds) for users-related cache entries. Used when setting cache entries in Redis, and for consistent cache invalidation logic across the module.
+*/
+export const USERS_CACHE_TTL_SECONDS = {
+    USER_PROFILE: 3600, 
     TOP_TAGS_TTL: 3600,
+    PENDING_AVATAR: 600,
 } as const;
 
 /**
