@@ -21,18 +21,11 @@ import { uuidv7 } from "@common/utils/uuidv7.util";
 
 import {
     IReelEventHandler,
-    ReelEventPayload,
 } from "./ireel-event-handler.interface";
 import { ReelEventRegistry } from "../registry/reel-event.registry";
 import { REELS_MODULE_CONSTANTS } from "../../reels.constants";
-
-/** Typed payload for REEL_SHARED events. */
-interface ReelSharedPayload extends ReelEventPayload {
-    userId: string;
-    reelId: string;
-    tags: string[];
-    timestamp: string;
-}
+import { AppMessage, REELS } from "@modules/messaging";
+import { ReelSharedEventPayload } from "@modules/messaging/messaging.interface";
 
 /**
  * Handles REEL_SHARED pub/sub events.
@@ -40,7 +33,7 @@ interface ReelSharedPayload extends ReelEventPayload {
  */
 export class ReelSharedHandler implements IReelEventHandler {
     readonly channel = REELS_MODULE_CONSTANTS.USER_INTERACTIONS;
-    readonly event = REELS_MODULE_CONSTANTS.REEL_SHARED;
+    readonly event = REELS.EVENTS.USER_INTERACTION.SHARED;
 
     private readonly logger = new Logger(ReelSharedHandler.name);
 
@@ -59,8 +52,8 @@ export class ReelSharedHandler implements IReelEventHandler {
      *
      * @param payload Parsed REEL_SHARED payload.
      */
-    async handle(payload: ReelEventPayload): Promise<void> {
-        const { userId, reelId } = payload as ReelSharedPayload;
+    async handle(message: AppMessage<unknown>): Promise<void> {
+        const { userId, reelId } = message.payload as ReelSharedEventPayload;
 
         try {
             const id = uuidv7();
@@ -85,6 +78,6 @@ export class ReelSharedHandler implements IReelEventHandler {
 // ---------------------------------------------------------------------------
 ReelEventRegistry.register(
     REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-    REELS_MODULE_CONSTANTS.REEL_SHARED,
+    REELS.EVENTS.USER_INTERACTION.SHARED,
     ReelSharedHandler,
 );

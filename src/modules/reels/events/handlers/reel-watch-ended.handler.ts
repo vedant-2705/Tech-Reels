@@ -24,22 +24,15 @@ import { uuidv7 } from "@common/utils/uuidv7.util";
 
 import {
     IReelEventHandler,
-    ReelEventPayload,
 } from "./ireel-event-handler.interface";
 import { ReelEventRegistry } from "../registry/reel-event.registry";
 import {
     REELS_MODULE_CONSTANTS,
     REELS_REDIS_KEYS,
 } from "../../reels.constants";
+import { AppMessage, REELS, type ReelWatchEndedEventPayload } from "@modules/messaging";
 
-/** Typed payload for REEL_WATCH_ENDED events. */
-interface ReelWatchEndedPayload extends ReelEventPayload {
-    userId: string;
-    reelId: string;
-    watch_duration_secs: number;
-    completion_pct: number;
-    timestamp: string;
-}
+
 
 /**
  * Handles REEL_WATCH_ENDED pub/sub events.
@@ -47,7 +40,7 @@ interface ReelWatchEndedPayload extends ReelEventPayload {
  */
 export class ReelWatchEndedHandler implements IReelEventHandler {
     readonly channel = REELS_MODULE_CONSTANTS.VIDEO_TELEMETRY;
-    readonly event = REELS_MODULE_CONSTANTS.REEL_WATCH_ENDED;
+    readonly event = REELS.EVENTS.VIDEO_TELEMETRY.WATCH_ENDED;
 
     private readonly logger = new Logger(ReelWatchEndedHandler.name);
 
@@ -64,11 +57,11 @@ export class ReelWatchEndedHandler implements IReelEventHandler {
      * Handle REEL_WATCH_ENDED - executes 4 independent side effects.
      * Each step is wrapped individually - one failure never blocks others.
      *
-     * @param payload Parsed REEL_WATCH_ENDED payload.
+     * @param message AppMessage envelope containing ReelWatchEndedEventPayload.
      */
-    async handle(payload: ReelEventPayload): Promise<void> {
+    async handle(message: AppMessage<unknown>): Promise<void> {
         const { userId, reelId, watch_duration_secs, completion_pct } =
-            payload as ReelWatchEndedPayload;
+            message.payload as ReelWatchEndedEventPayload;
 
         // 1 - BF.ADD watched:{userId} reelId
         try {
@@ -128,6 +121,6 @@ export class ReelWatchEndedHandler implements IReelEventHandler {
 // ---------------------------------------------------------------------------
 ReelEventRegistry.register(
     REELS_MODULE_CONSTANTS.VIDEO_TELEMETRY,
-    REELS_MODULE_CONSTANTS.REEL_WATCH_ENDED,
+    REELS.EVENTS.VIDEO_TELEMETRY.WATCH_ENDED,
     ReelWatchEndedHandler,
 );

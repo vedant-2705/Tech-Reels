@@ -36,7 +36,6 @@ export type {
     ReelStatusChangedEventPayload,
     TagUpdatedEventPayload,
     ReelWatchEndedEventPayload,
-    ReelInteractionEventPayload,
     PathCompletedEventPayload,
     XpAwardedEventPayload,
     BadgeEarnedEventPayload,
@@ -47,7 +46,7 @@ export type {
 export {
     AUTH,
     USERS_QUEUE_JOBS,
-    REELS_QUEUE_JOBS,
+    REELS,
     SKILL_PATH_QUEUE_JOBS,
     CHALLENGES_QUEUE_JOBS,
     GAMIFICATION_QUEUE_JOBS,

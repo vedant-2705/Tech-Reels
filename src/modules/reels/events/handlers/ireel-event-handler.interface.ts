@@ -6,15 +6,8 @@
  */
 
 import { DatabaseService } from "@database/database.service";
+import { AppMessage } from "@modules/messaging";
 import { RedisService } from "@redis/redis.service";
-
-/**
- * Parsed pub/sub payload - every event must carry channel and event fields.
- */
-export interface ReelEventPayload {
-    event: string;
-    [key: string]: unknown;
-}
 
 /**
  * Every Reels event handler must implement this interface.
@@ -30,10 +23,10 @@ export interface IReelEventHandler {
     /**
      * Handle the incoming pub/sub event.
      *
-     * @param payload Parsed event payload.
+     * @param message AppMessage envelope.
      * @returns void
      */
-    handle(payload: ReelEventPayload): Promise<void>;
+    handle(message: AppMessage<unknown>): Promise<void>;
 }
 
 /**

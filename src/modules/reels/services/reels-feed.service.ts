@@ -9,8 +9,6 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 
 import { ReelsRepository } from "../reels.repository";
 import { RedisService } from "@redis/redis.service";
@@ -25,11 +23,9 @@ import { toReelResponseDto, metaToResponseDto } from "../reels.mapper";
 import {
     FEED_LOW_THRESHOLD,
     REEL_STATUS,
-    REELS_MODULE_CONSTANTS,
-    REELS_QUEUE_JOBS,
     REELS_REDIS_KEYS,
 } from "../reels.constants";
-import { QUEUES } from "@queues/queue-names";
+import { MessagingService, REELS } from "@modules/messaging";
 
 @Injectable()
 export class ReelsFeedService {
@@ -38,8 +34,7 @@ export class ReelsFeedService {
     constructor(
         private readonly reelsRepository: ReelsRepository,
         private readonly redis: RedisService,
-        @InjectQueue(QUEUES.FEED_BUILD)
-        private readonly feedBuildQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
@@ -61,10 +56,13 @@ export class ReelsFeedService {
         const feedLength = await this.reelsRepository.getFeedLength(userId);
 
         if (feedLength === 0) {
-            void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_COLD_START, {
-                userId,
-                reason: REELS_QUEUE_JOBS.FEED_COLD_START,
-            });
+            void this.messagingService.dispatchJob(
+                REELS.QUEUE_JOBS.FEED_COLD_START, 
+                {
+                    userId,
+                    reason: REELS.QUEUE_JOBS.FEED_COLD_START,
+                }
+            );
 
             const RETRY_COUNT = 3;
             const RETRY_DELAY_MS = 300;
@@ -95,13 +93,12 @@ export class ReelsFeedService {
                 const remaining =
                     await this.reelsRepository.getFeedLength(userId);
                 if (remaining <= FEED_LOW_THRESHOLD) {
-                    void this.redis.publish(
-                        REELS_MODULE_CONSTANTS.FEED_EVENTS,
-                        JSON.stringify({
-                            event: REELS_MODULE_CONSTANTS.FEED_LOW,
+                    void this.messagingService.dispatchEvent(
+                        REELS.EVENTS.FEED_EVENTS.LOW,
+                        {
                             userId,
                             remaining,
-                        }),
+                        },
                     );
                 }
 
@@ -136,13 +133,12 @@ export class ReelsFeedService {
 
         const remaining = await this.reelsRepository.getFeedLength(userId);
         if (remaining <= FEED_LOW_THRESHOLD) {
-            void this.redis.publish(
-                REELS_MODULE_CONSTANTS.FEED_EVENTS,
-                JSON.stringify({
-                    event: REELS_MODULE_CONSTANTS.FEED_LOW,
+            void this.messagingService.dispatchEvent(
+                REELS.EVENTS.FEED_EVENTS.LOW,
+                {
                     userId,
                     remaining,
-                }),
+                },
             );
         }
 

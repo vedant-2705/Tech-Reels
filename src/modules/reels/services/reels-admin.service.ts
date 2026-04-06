@@ -20,11 +20,12 @@ import { AdminReelsPaginatedResponseDto } from "../dto/admin-reels-paginated-res
 import { ReelNotFoundException } from "../exceptions/reel-not-found.exception";
 import { toReelResponseDto } from "../reels.mapper";
 
+import { REEL_STATUS } from "../reels.constants";
 import {
-    REEL_STATUS,
-    REELS_MODULE_CONSTANTS,
-} from "../reels.constants";
-import { TAGS_ALL_KEY, TAGS_CATEGORY_PREFIX } from "@common/constants/redis-keys.constants";
+    TAGS_ALL_KEY,
+    TAGS_CATEGORY_PREFIX,
+} from "@common/constants/redis-keys.constants";
+import { MessagingService, REELS } from "@modules/messaging";
 
 @Injectable()
 export class ReelsAdminService {
@@ -33,6 +34,7 @@ export class ReelsAdminService {
     constructor(
         private readonly reelsRepository: ReelsRepository,
         private readonly redis: RedisService,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
@@ -58,21 +60,25 @@ export class ReelsAdminService {
         await this.reelsRepository.deleteMetaCache(reelId);
 
         if (dto.status === REEL_STATUS.ACTIVE) {
-            await this.reelsRepository.bulkAddToTagSets(reel.tags.map((t) => t.id), reelId);
+            await this.reelsRepository.bulkAddToTagSets(
+                reel.tags.map((t) => t.id),
+                reelId,
+            );
             await this.invalidateTagsCache();
         } else if (dto.status === REEL_STATUS.DISABLED) {
-            await this.reelsRepository.bulkRemoveFromTagSets(reel.tags.map((t) => t.id), reelId);
+            await this.reelsRepository.bulkRemoveFromTagSets(
+                reel.tags.map((t) => t.id),
+                reelId,
+            );
             await this.invalidateTagsCache();
         }
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.CONTENT_EVENTS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_STATUS_CHANGED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.REEL_STATUS_CHANGED,
+            {
                 reelId,
                 status: dto.status,
-                timestamp: new Date().toISOString(),
-            }),
+            },
         );
 
         return {
@@ -114,9 +120,7 @@ export class ReelsAdminService {
     private async invalidateTagsCache(): Promise<void> {
         try {
             await this.redis.del(TAGS_ALL_KEY);
-            await this.redis.deletePattern(
-                `${TAGS_CATEGORY_PREFIX}:*`,
-            );
+            await this.redis.deletePattern(`${TAGS_CATEGORY_PREFIX}:*`);
         } catch (err) {
             this.logger.warn(
                 `Tags cache invalidation failed: ${(err as Error).message}`,

@@ -16,22 +16,13 @@
  * for regular commands so it must never share with RedisService.client.
  */
 
-import {
-    Injectable,
-    Logger,
-    OnModuleDestroy,
-    OnModuleInit,
-} from "@nestjs/common";
-import { Redis } from "ioredis";
+import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
 
 import { ReelEventRegistry } from "../events/registry/reel-event.registry";
-import {
-    IReelEventHandler,
-    ReelEventPayload,
-} from "../events/handlers/ireel-event-handler.interface";
+import { IReelEventHandler } from "../events/handlers/ireel-event-handler.interface";
 
 // ---------------------------------------------------------------------------
 // Self-registering imports
@@ -40,18 +31,14 @@ import {
 // ---------------------------------------------------------------------------
 import "../events/handlers/reel-watch-ended.handler";
 import "../events/handlers/reel-shared.handler";
+import { AppMessage, BaseSubscriber } from "@modules/messaging";
 
 /**
  * Manages a dedicated Redis subscriber connection.
  * Routes incoming messages to handler instances via ReelEventRegistry.
  */
 @Injectable()
-export class ReelInteractionsSubscriber
-    implements OnModuleInit, OnModuleDestroy
-{
-    private readonly logger = new Logger(ReelInteractionsSubscriber.name);
-    private subscriber!: Redis;
-
+export class ReelInteractionsSubscriber extends BaseSubscriber {
     /** Instantiated handler map built during onModuleInit. */
     private readonly instances = new Map<string, IReelEventHandler>();
 
@@ -60,86 +47,58 @@ export class ReelInteractionsSubscriber
      * @param db PostgreSQL service - passed to handler constructors.
      */
     constructor(
-        private readonly redis: RedisService,
+        redisService: RedisService,
         private readonly db: DatabaseService,
-    ) {}
+    ) {
+        super(redisService);
+    }
 
     /**
-     * Instantiate all registered handlers with deps, then subscribe to channels.
+     * Declare channels derived from registered handlers.
+     * Called once by BaseSubscriber.onModuleInit().
+     */
+    protected channels(): string[] {
+        return ReelEventRegistry.getChannels();
+    }
+
+    /**
+     * Instantiate handler constructors and build instance map.
+     * Called after BaseSubscriber.onModuleInit() sets up the connection.
+     *
+     * Override: BaseSubscriber.onModuleInit() calls channels() before
+     * subscribing, so we hook into it here to also build the instance map.
      */
     async onModuleInit(): Promise<void> {
-        // Instantiate every registered handler constructor with injected deps
+        // Instantiate every registered handler with injected deps
         for (const [key, HandlerClass] of ReelEventRegistry.getHandlers()) {
-            const instance = new HandlerClass(this.redis, this.db);
+            const instance = new HandlerClass(this.redisService, this.db);
             this.instances.set(key, instance);
         }
 
-        // Dedicated connection - duplicate() copies config from shared client
-        this.subscriber = this.redis.client.duplicate();
-
-        this.subscriber.on("error", (err: Error) => {
-            this.logger.error(
-                `[ReelInteractionsSubscriber] Redis error: ${err.message}`,
-            );
-        });
-
-        // Subscribe to all channels derived from registered handlers
-        const channels = ReelEventRegistry.getChannels();
-        await this.subscriber.subscribe(...channels);
-
-        this.subscriber.on("message", (channel: string, message: string) => {
-            void this.onMessage(channel, message);
-        });
-
-        this.logger.log(`Subscribed to channels: ${channels.join(", ")}`);
+        // Delegate connection + subscription to BaseSubscriber
+        await super.onModuleInit();
     }
 
     /**
-     * Route incoming message to the correct handler instance.
-     * Malformed messages are logged and swallowed - never throw from here.
+     * Route an AppMessage envelope to the correct handler.
+     * Key format: `{channel}:{message.type}` - matches registry key format.
+     * Unhandled keys are silently ignored (other modules share channels).
      *
-     * @param channel Redis pub/sub channel name.
-     * @param message Raw JSON string payload.
+     * @param channel Redis channel the message arrived on.
+     * @param message Parsed and validated AppMessage envelope.
      */
-    private async onMessage(channel: string, message: string): Promise<void> {
-        let parsed: ReelEventPayload | null = null;
-
-        try {
-            parsed = JSON.parse(message) as ReelEventPayload;
-        } catch {
-            this.logger.warn(
-                `Failed to parse message on channel "${channel}": ${message}`,
-            );
-            return;
-        }
-
-        const event = parsed?.event;
-        if (!event) {
-            this.logger.warn(`Missing event field on channel "${channel}"`);
-            return;
-        }
-
-        const key = `${channel}:${event}`;
+    protected async route(
+        channel: string,
+        message: AppMessage<unknown>,
+    ): Promise<void> {
+        const key = `${channel}:${message.type}`;
         const handler = this.instances.get(key);
 
         if (!handler) {
-            // Not an error - other modules publish to same channels
+            // Not an error - other modules publish to the same channels
             return;
         }
 
-        try {
-            await handler.handle(parsed);
-        } catch (err) {
-            this.logger.error(
-                `Handler failed for key "${key}": ${(err as Error).message}`,
-            );
-        }
-    }
-
-    /**
-     * Gracefully disconnect dedicated subscriber connection on shutdown.
-     */
-    async onModuleDestroy(): Promise<void> {
-        await this.subscriber.quit();
+        await handler.handle(message);
     }
 }

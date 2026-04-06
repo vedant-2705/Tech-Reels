@@ -25,12 +25,14 @@ import {
     REELS_MESSAGES,
     REELS_MODULE_CONSTANTS,
 } from "../reels.constants";
+import { MessagingService, REELS } from "@modules/messaging";
 
 @Injectable()
 export class ReelsInteractionService {
     constructor(
         private readonly reelsRepository: ReelsRepository,
         private readonly redis: RedisService,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /** Like a reel. Returns the current liked state. */
@@ -51,14 +53,13 @@ export class ReelsInteractionService {
             );
         }
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_LIKED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.USER_INTERACTION.LIKED,
+            {
                 userId,
                 reelId,
                 tags: reel.tags.map((t) => t.id),
-            }),
+            },
         );
 
         return { liked: true };
@@ -82,13 +83,12 @@ export class ReelsInteractionService {
             );
         }
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_UNLIKED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.USER_INTERACTION.UNLIKED,
+            {
                 userId,
                 reelId,
-            }),
+            },
         );
 
         return { liked: false };
@@ -111,13 +111,12 @@ export class ReelsInteractionService {
             );
         }
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_SAVED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.USER_INTERACTION.SAVED,
+            {
                 userId,
                 reelId,
-            }),
+            },
         );
 
         return { saved: true };
@@ -140,13 +139,12 @@ export class ReelsInteractionService {
             );
         }
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_UNSAVED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.USER_INTERACTION.UNSAVED,
+            {
                 userId,
                 reelId,
-            }),
+            },
         );
 
         return { saved: false };
@@ -166,16 +164,14 @@ export class ReelsInteractionService {
             return;
         }
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.VIDEO_TELEMETRY,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_WATCH_ENDED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.VIDEO_TELEMETRY.WATCH_ENDED,
+            {
                 userId,
                 reelId,
                 watch_duration_secs: dto.watch_duration_secs,
                 completion_pct: dto.completion_pct,
-                timestamp: new Date().toISOString(),
-            }),
+            },
         );
     }
 

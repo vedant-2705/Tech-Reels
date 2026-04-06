@@ -40,9 +40,9 @@ import {
     REEL_EDITABLE_STATUSES,
     REEL_STATUS,
     REELS_MESSAGES,
-    REELS_MODULE_CONSTANTS,
 } from "../reels.constants";
 import { TAGS_ALL_KEY, TAGS_CATEGORY_PREFIX } from "@common/constants/redis-keys.constants";
+import { MessagingService, REELS } from "@modules/messaging";
 
 @Injectable()
 export class ReelsManagementService {
@@ -51,6 +51,7 @@ export class ReelsManagementService {
     constructor(
         private readonly reelsRepository: ReelsRepository,
         private readonly redis: RedisService,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /** Return the authenticated user's own reels (cursor-paginated). */
@@ -165,14 +166,12 @@ export class ReelsManagementService {
         await this.reelsRepository.bulkRemoveFromTagSets(reel.tags.map((t) => t.id), reelId);
         await this.invalidateTagsCache();
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.CONTENT_EVENTS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_DELETED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.REEL_DELETED,
+            {
                 reelId,
                 userId,
-                timestamp: new Date().toISOString(),
-            }),
+            },
         );
 
         return { message: REELS_MESSAGES.DELETED };

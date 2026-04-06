@@ -30,6 +30,7 @@ import { FeedModule } from "@modules/feed/feed.module";
 import { SkillPathsModule } from "@modules/skill-paths/skill-paths.module";
 import { AdminModule } from "@modules/admin/admin.module";
 import { NotificationModule } from "@modules/notification/notification.module";
+import { MessagingModule } from "@modules/messaging";
 
 @Module({
     imports: [
@@ -73,6 +74,8 @@ import { NotificationModule } from "@modules/notification/notification.module";
         QueuesModule,
         S3Module,
 
+        MessagingModule,
+        
         //  Feature modules (add each as built)
         AuthModule,
         UsersModule,

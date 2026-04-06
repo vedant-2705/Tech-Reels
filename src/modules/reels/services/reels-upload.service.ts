@@ -11,8 +11,6 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 
 import { ReelsRepository } from "../reels.repository";
 import { RedisService } from "@redis/redis.service";
@@ -36,10 +34,9 @@ import {
     REELS_MAX_UPLOAD_BYTES,
     REELS_MESSAGES,
     REELS_PRESIGN_EXPIRES_IN,
-    REELS_QUEUE_JOBS,
     REELS_S3_ENV,
 } from "../reels.constants";
-import { QUEUES } from "@queues/queue-names";
+import { MessagingService, REELS } from "@modules/messaging";
 
 @Injectable()
 export class ReelsUploadService {
@@ -50,8 +47,7 @@ export class ReelsUploadService {
         private readonly redis: RedisService,
         private readonly s3Service: S3Service,
         private readonly config: ConfigService,
-        @InjectQueue(QUEUES.VIDEO_PROCESSING)
-        private readonly videoProcessingQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
@@ -155,7 +151,7 @@ export class ReelsUploadService {
 
         await this.reelsRepository.deleteDraft(reelId);
 
-        void this.videoProcessingQueue.add(REELS_QUEUE_JOBS.VIDEO_PROCESS, {
+        void this.messagingService.dispatchJob(REELS.QUEUE_JOBS.VIDEO_PROCESS, {
             reelId,
             rawKey: dto.raw_key,
             userId,

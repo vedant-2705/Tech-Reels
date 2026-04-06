@@ -8,8 +8,6 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 
 import { ReelsRepository } from "../reels.repository";
 import { RedisService } from "@redis/redis.service";
@@ -26,11 +24,9 @@ import {
     REEL_META_FIELD,
     REEL_STATUS,
     REELS_APP_ENV,
-    REELS_MODULE_CONSTANTS,
-    REELS_QUEUE_JOBS,
     REELS_REDIS_KEYS,
 } from "../reels.constants";
-import { QUEUES } from "@queues/queue-names";
+import { MessagingService, REELS } from "@modules/messaging";
 
 @Injectable()
 export class ReelsSearchService {
@@ -41,8 +37,7 @@ export class ReelsSearchService {
         private readonly redis: RedisService,
         private readonly config: ConfigService,
         private readonly reelsFeedService: ReelsFeedService,
-        @InjectQueue(QUEUES.FEED_BUILD)
-        private readonly feedBuildQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
@@ -144,9 +139,9 @@ export class ReelsSearchService {
                 page,
             );
 
-        void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_SEARCH, {
+        void this.messagingService.dispatchJob(REELS.QUEUE_JOBS.FEED_SEARCH, {
             userId,
-            reason: REELS_QUEUE_JOBS.FEED_SEARCH,
+            reason: REELS.QUEUE_JOBS.FEED_SEARCH,
             tagIds: matchedTags.map((t) => t.id),
         });
 
@@ -180,22 +175,23 @@ export class ReelsSearchService {
             1,
         );
 
-        void this.redis.publish(
-            REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-            JSON.stringify({
-                event: REELS_MODULE_CONSTANTS.REEL_SHARED,
+        void this.messagingService.dispatchEvent(
+            REELS.EVENTS.USER_INTERACTION.SHARED,
+            {
                 userId,
                 reelId,
                 tags: reel.tags.map((t) => t.id),
-                timestamp: new Date().toISOString(),
-            }),
+            },
         );
 
-        void this.feedBuildQueue.add(REELS_QUEUE_JOBS.FEED_SHARE, {
-            userId,
-            reason: REELS_QUEUE_JOBS.FEED_SHARE,
-            tagIds: reel.tags.map((t) => t.id),
-        });
+        void this.messagingService.dispatchJob(
+            REELS.EVENTS.USER_INTERACTION.SHARED,
+            {
+                userId,
+                reason: REELS.EVENTS.USER_INTERACTION.SHARED,
+                tagIds: reel.tags.map((t) => t.id),
+            },
+        );
 
         const appBaseUrl =
             this.config.get<string>(REELS_APP_ENV.APP_BASE_URL) ?? "";

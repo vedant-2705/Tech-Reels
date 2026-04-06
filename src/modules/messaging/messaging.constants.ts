@@ -21,17 +21,40 @@ export const AUTH = {
         USER_REGISTERED: "USER_REGISTERED",
         USER_LOGGED_IN: "USER_LOGGED_IN",
         USER_LOGGED_OUT: "USER_LOGGED_OUT",
-    }
-
-}
+    },
+};
 
 export const USERS_QUEUE_JOBS = {
     REBUILD: "rebuild",
 } as const;
 
-export const REELS_QUEUE_JOBS = {
-    FEED_COLD_START: "feed_cold_start",
-    PROCESS_VIDEO: "process_video",
+export const REELS = {
+    QUEUE_JOBS: {
+        VIDEO_PROCESS: "process",
+        FEED_COLD_START: "cold_start",
+        FEED_SEARCH: "search",
+        FEED_SHARE: "share",
+    },
+    EVENTS: {
+        USER_INTERACTION: {
+            LIKED: "REEL_LIKED",
+            UNLIKED: "REEL_UNLIKED",
+            SAVED: "REEL_SAVED",
+            UNSAVED: "REEL_UNSAVED",
+            SHARED: "REEL_SHARED",
+        },
+        VIDEO_TELEMETRY: {
+            WATCH_ENDED: "REEL_WATCH_ENDED",
+        },
+        FEED_EVENTS: {
+            LOW: "FEED_LOW",
+            CONTENT_EVENT: "CONTENT_EVENT",
+            TAG_UPDATED: "TAG_UPDATED",
+        },
+        REEL_CREATED: "REEL_CREATED",
+        REEL_DELETED: "REEL_DELETED",
+        REEL_STATUS_CHANGED: "REEL_STATUS_CHANGED",
+    }
 } as const;
 
 export const SKILL_PATH_QUEUE_JOBS = {
@@ -47,10 +70,10 @@ export const CHALLENGES_QUEUE_JOBS = {
 
 export const GAMIFICATION_QUEUE_JOBS = {
     XP_AWARD: "xp_award",
-    BADGE_EVALUATION: "badge_evaluation", 
+    BADGE_EVALUATION: "badge_evaluation",
     WEEKLY_LEADERBOARD_RESET: "weekly_leaderboard_reset",
     STREAK_RESET: "streak_reset",
-    UPDATE_USER_STREAK: "update_user_streak", 
+    UPDATE_USER_STREAK: "update_user_streak",
 } as const;
 
 export const NOTIFICATION_QUEUE_JOBS = {

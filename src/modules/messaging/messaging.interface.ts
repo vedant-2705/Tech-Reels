@@ -45,15 +45,13 @@ interface CommonJobPayload {
 }
 // --- Auth / Users ---
 
-export interface WelcomeEmailJobPayload extends CommonJobPayload {  
-}
+export interface WelcomeEmailJobPayload extends CommonJobPayload {}
 
 export interface NewUserJobPayload extends CommonJobPayload {
     reason: string;
 }
 
-export interface RebuildFeedJobPayload extends CommonJobPayload {
-}
+export interface RebuildFeedJobPayload extends CommonJobPayload {}
 
 // --- Reels / Feed ---
 
@@ -61,8 +59,20 @@ export interface FeedColdStartJobPayload extends CommonJobPayload {
     reason: string;
 }
 
-export interface ProcessVideoJobPayload extends CommonJobPayload {
+export interface ProcessVideoJobPayload {
     reelId: string;
+    rawKey: string;
+    userId: string;
+}
+
+export interface FeedSearchJobPayload extends CommonJobPayload {
+    reason: string;
+    tagIds: string[];
+}
+
+export interface FeedShareJobPayload extends CommonJobPayload {
+    reason: string;
+    tagIds: string[];
 }
 
 // --- Gamification: XP Award ---
@@ -83,8 +93,7 @@ export interface BadgeEvaluationJobPayload extends CommonJobPayload {
 
 // --- Gamification: Streak ---
 
-export interface UpdateUserStreakJobPayload extends CommonJobPayload {
-}
+export interface UpdateUserStreakJobPayload extends CommonJobPayload {}
 
 // --- Gamification: Leaderboard / Streak Reset (scheduled, no payload) ---
 
@@ -167,8 +176,26 @@ export interface ReelWatchEndedEventPayload extends CommonEventPayload {
     completion_pct: number;
 }
 
-export interface ReelInteractionEventPayload extends CommonEventPayload {
+export interface ReelLikedEventPayload extends CommonJobPayload {
     reelId: string;
+    tags: string[];
+}
+
+export interface ReelUnlikedEventPayload extends CommonJobPayload {
+    reelId: string;
+}
+
+export interface ReelSavedEventPayload extends CommonJobPayload {
+    reelId: string;
+}
+
+export interface ReelUnsavedEventPayload extends CommonJobPayload {
+    reelId: string;
+}
+
+export interface ReelSharedEventPayload extends CommonJobPayload {
+    reelId: string;
+    tags: string[];
 }
 
 export interface PathCompletedEventPayload extends CommonEventPayload {
