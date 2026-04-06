@@ -4,24 +4,39 @@
  * Shared constants, Redis key prefixes, TTL values, pub/sub channel names,
  * event names, Bloom filter parameters, rate-limit configs, and enum values
  * used across the Reels module.
+ *
+ * Cross-module keys (reel:meta, reel_tags:tag, feed, watched) are imported
+ * from @common/constants/redis-keys.constants to prevent key-string drift.
  */
+
+import {
+    REEL_META_PREFIX,
+    REEL_TAG_SET_PREFIX,
+    FEED_PREFIX,
+    WATCHED_PREFIX,
+    PUBSUB_CONTENT_EVENTS,
+    PUBSUB_USER_INTERACTIONS,
+    PUBSUB_VIDEO_TELEMETRY,
+    PUBSUB_FEED_EVENTS,
+} from "@common/constants/redis-keys.constants";
 
 /**
  * Redis key prefixes used by the Reels module for cache reads and writes.
+ * Cross-module keys are re-exported from @common/constants/redis-keys.constants.
  */
 export const REELS_REDIS_KEYS = {
     /** Hash: full reel metadata. TTL 300s. */
-    META_PREFIX: "reel:meta",
+    META_PREFIX: REEL_META_PREFIX,
     /** Hash: reel view, like, save metadata. TTL 300s. */
     INTERACTION_META_PREFIX: "reel:interaction_meta",
     /** Hash: reel draft metadata before upload is confirmed. TTL matches presigned URL window. */
     DRAFT_PREFIX: "reel:draft",
     /** Set: active reel IDs per tag. No TTL - permanent. */
-    TAG_SET_PREFIX: "reel_tags:tag",
+    TAG_SET_PREFIX: REEL_TAG_SET_PREFIX,
     /** Bloom filter: watched reel IDs per user. TTL 30 days. */
-    WATCHED_PREFIX: "watched",
+    WATCHED_PREFIX: WATCHED_PREFIX,
     /** List: personalised feed reel IDs per user. TTL 1800s. */
-    FEED_PREFIX: "feed",
+    FEED_PREFIX: FEED_PREFIX,
     /** Set: reel IDs that have received view events since last cron sync. No TTL. */
     DIRTY_VIEWS: "reels:dirty:views",
 } as const;
@@ -70,11 +85,11 @@ export const REELS_MODULE_CONSTANTS = {
     /** Published when a reel is shared. */
     REEL_SHARED: "REEL_SHARED",
 
-    // Channel names
-    CONTENT_EVENTS: "content_events",
-    USER_INTERACTIONS: "user_interactions",
-    VIDEO_TELEMETRY: "video_telemetry",
-    FEED_EVENTS: "feed_events",
+    // Channel names - imported from shared constants
+    CONTENT_EVENTS: PUBSUB_CONTENT_EVENTS,
+    USER_INTERACTIONS: PUBSUB_USER_INTERACTIONS,
+    VIDEO_TELEMETRY: PUBSUB_VIDEO_TELEMETRY,
+    FEED_EVENTS: PUBSUB_FEED_EVENTS,
 } as const;
 
 /**
