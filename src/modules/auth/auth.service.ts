@@ -55,6 +55,8 @@ import {
     AUTH_QUEUE_JOBS,
 } from "./auth.constants";
 import { USERS_ACCOUNT_STATUS } from "@common/constants/shared.constants";
+import { MessagingService } from "@modules/messaging";
+import { use } from "passport";
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
@@ -80,9 +82,7 @@ export class AuthServiceImpl extends AuthService {
         private readonly tokenService: TokenService,
         private readonly usernameGeneratorService: UsernameGeneratorService,
         private readonly redis: RedisService,
-        @InjectQueue(QUEUES.NOTIFICATION)
-        private readonly notificationQueue: Queue,
-        @InjectQueue(QUEUES.FEED_BUILD) private readonly feedBuildQueue: Queue,
+       private readonly messagingService: MessagingService,
     ) {
         super();
     }
@@ -124,14 +124,17 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 7. Async side effects - fire and forget (don't await, don't block response)
-        void this.notificationQueue.add(AUTH_QUEUE_JOBS.WELCOME_EMAIL, {
-            type: AUTH_QUEUE_JOBS.WELCOME_EMAIL,
-            userId: user.id,
-        });
-        void this.feedBuildQueue.add(AUTH_QUEUE_JOBS.NEW_USER, {
-            userId: user.id,
-            reason: AUTH_QUEUE_JOBS.NEW_USER,
-        });
+        void this.messagingService.dispatchJob(
+            AUTH_QUEUE_JOBS.WELCOME_EMAIL, 
+            { userId: user.id }
+        );
+        void this.messagingService.dispatchJob(
+            AUTH_QUEUE_JOBS.NEW_USER, 
+            { 
+                userId: user.id,
+                reason: AUTH_QUEUE_JOBS.NEW_USER,
+            }
+        );
 
         // 8. Return response
         return this.buildAuthResponse(user, tokens, false);
@@ -189,14 +192,9 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 7. Publish login event to Pub/Sub
-        const event: UserLoggedInEvent = {
-            event: AUTH_MODULE_CONSTANTS.USER_LOGGED_IN,
-            userId: user.id,
-            timestamp: new Date().toISOString(),
-        };
-        void this.redis.publish(
-            AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
-            JSON.stringify(event),
+        void this.messagingService.dispatchEvent(
+            AUTH_MODULE_CONSTANTS.USER_LOGGED_IN,
+            { userId: user.id },
         );
 
         // 8. Return response
@@ -265,14 +263,10 @@ export class AuthServiceImpl extends AuthService {
                 needsOnboarding = true;
 
                 // Async side effects for new users
-                void this.notificationQueue.add(AUTH_QUEUE_JOBS.WELCOME_EMAIL, {
-                    type: AUTH_QUEUE_JOBS.WELCOME_EMAIL,
-                    userId: user.id,
-                });
-                // void this.feedBuildQueue.add(AUTH_QUEUE_JOBS.NEW_USER, {
-                //     userId: user.id,
-                //     reason: AUTH_QUEUE_JOBS.NEW_USER,
-                // });
+                void this.messagingService.dispatchJob(
+                    AUTH_QUEUE_JOBS.WELCOME_EMAIL,
+                    { userId: user.id }
+                );
             }
         }
 
@@ -287,14 +281,9 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 8. Publish login event
-        const event: UserLoggedInEvent = {
-            event: AUTH_MODULE_CONSTANTS.USER_LOGGED_IN,
-            userId: user.id,
-            timestamp: new Date().toISOString(),
-        };
-        void this.redis.publish(
-            AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
-            JSON.stringify(event),
+        void this.messagingService.dispatchEvent(
+            AUTH_MODULE_CONSTANTS.USER_LOGGED_IN,
+            { userId: user.id },
         );
 
         // 9. Return response with needs_onboarding flag
@@ -381,14 +370,9 @@ export class AuthServiceImpl extends AuthService {
         // Idempotent - no error if token family doesn't exist
         await this.authRepository.deleteRefreshToken(userId, tokenFamily);
 
-        const event: UserLoggedOutEvent = {
-            event: AUTH_MODULE_CONSTANTS.USER_LOGGED_OUT,
-            userId,
-            timestamp: new Date().toISOString(),
-        };
-        void this.redis.publish(
-            AUTH_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
-            JSON.stringify(event),
+        void this.messagingService.dispatchEvent(
+            AUTH_MODULE_CONSTANTS.USER_LOGGED_OUT,
+            { userId },
         );
 
         return { message: AUTH_MESSAGES.LOGGED_OUT };

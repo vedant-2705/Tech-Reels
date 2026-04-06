@@ -9,21 +9,19 @@
  * awardXp is idempotent via XP deduplication - safe to retry.
  */
 
-import { Processor, WorkerHost } from "@nestjs/bullmq";
-import { Logger } from "@nestjs/common";
+import { Processor } from "@nestjs/bullmq";
 import { Job } from "bullmq";
 import { GamificationService } from "../gamification.service.abstract";
 import { XpAwardJobPayload } from "../entities/gamification.entity";
 import { QUEUES } from "@queues/queue-names";
-import { GAMIFICATION_XP_JOBS } from "../gamification.constants";
+import { BaseWorker } from "@modules/messaging/base.worker";
+import { GAMIFICATION_QUEUE_JOBS } from "@modules/messaging";
 
 /**
  * Worker that processes XP award jobs from xp_award_queue.
  */
 @Processor(QUEUES.XP_AWARD)
-export class XpAwardWorker extends WorkerHost {
-    private readonly logger = new Logger(XpAwardWorker.name);
-
+export class XpAwardWorker extends BaseWorker<XpAwardJobPayload> {
     /**
      * @param gamificationService Service containing awardXp business logic.
      */
@@ -32,24 +30,21 @@ export class XpAwardWorker extends WorkerHost {
     }
 
     /**
-     * Dispatches incoming jobs to the appropriate handler.
-     *
-     * @param job BullMQ job with name and data.
+     * payload is already unwrapped from AppMessage by BaseWorker.
+     * Destructure directly - no job.data.payload nesting.
      */
-    async process(job: Job<XpAwardJobPayload>): Promise<void> {
+    async handle(payload: XpAwardJobPayload, job: Job): Promise<void> {
         this.logger.debug(
-            `[XpAwardWorker] Processing job ${job.id} name=${job.name} userId=${job.data.userId}`,
+            `Processing job ${job.id} name=${job.name} userId=${payload.userId}`,
         );
-
+ 
         switch (job.name) {
-            case GAMIFICATION_XP_JOBS.XP_AWARD:
-                await this.gamificationService.awardXp(job.data);
+            case GAMIFICATION_QUEUE_JOBS.XP_AWARD:
+                await this.gamificationService.awardXp(payload);
                 break;
-
+ 
             default:
-                this.logger.warn(
-                    `[XpAwardWorker] Unknown job name "${job.name}" - skipping.`,
-                );
+                this.logger.warn(`Unknown job name "${job.name}" - skipping.`);
         }
     }
 }
