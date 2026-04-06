@@ -2,7 +2,7 @@
  * @module modules/reels/reels.mapper
  * @description
  * Pure mapping functions shared by the ReelsService facade and all sub-services.
- * Centralises the Reel entity → ReelResponseDto / ReelMeta → ReelResponseDto
+ * Centralises the Reel entity -> ReelResponseDto / ReelMeta -> ReelResponseDto
  * transforms so no sub-service duplicates the shape logic.
  *
  * All functions are stateless - no dependency injection required.

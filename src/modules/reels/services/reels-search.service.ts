@@ -2,7 +2,7 @@
  * @module modules/reels/services/reels-search.service
  * @description
  * Handles reel search and share functionality:
- *   searchReels - tag matching → SUNION → BF filter → DB sort → paginate
+ *   searchReels - tag matching -> SUNION -> BF filter -> DB sort -> paginate
  *   shareReel   - increment share count, publish event, return shareable URL
  */
 
@@ -47,7 +47,7 @@ export class ReelsSearchService {
 
     /**
      * Full-text / tag search across active reels.
-     * Flow: match tags → SUNION Redis Sets → BF filter watched → DB sort by view_count.
+     * Flow: match tags -> SUNION Redis Sets -> BF filter watched -> DB sort by view_count.
      * Falls back to popular active reels when no tags match the query.
      */
     async searchReels(

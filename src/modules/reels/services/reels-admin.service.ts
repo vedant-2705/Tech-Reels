@@ -39,9 +39,9 @@ export class ReelsAdminService {
      * Admin: update reel status. Manages tag set membership in Redis
      * and invalidates reel meta cache.
      *
-     * active   → SADD reel to each tag's Redis Set.
-     * disabled → SREM reel from each tag's Redis Set.
-     * needs_review → no tag set change.
+     * active   -> SADD reel to each tag's Redis Set.
+     * disabled -> SREM reel from each tag's Redis Set.
+     * needs_review -> no tag set change.
      */
     async adminUpdateStatus(
         reelId: string,

@@ -3,7 +3,7 @@
  * @description
  * Handles the personalised feed pipeline:
  *   getFeed - cold start detection, LPOP from Redis, fallback, FEED_LOW pub/sub
- *   resolveReelMetas - cache-first ID → ReelResponseDto resolution
+ *   resolveReelMetas - cache-first ID -> ReelResponseDto resolution
  *   buildPersonalisedFallback - affinity candidates, BF filter, round-robin
  *   annotateReelsWithInteractions - bulk is_liked / is_saved annotation
  */
