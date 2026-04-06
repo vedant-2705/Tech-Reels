@@ -41,9 +41,10 @@ import { StreakResetWorker } from "./workers/streak-reset.worker";
 import { LeaderboardResetWorker } from "./workers/leaderboard-reset.worker";
 
 import { GamificationSubscriber } from "./subscribers/gamification.subscriber";
+import { MessagingModule } from "@modules/messaging";
 
 @Module({
-    imports: [DatabaseModule, RedisModule],
+    imports: [DatabaseModule, RedisModule, MessagingModule],
     providers: [
         // Core
         GamificationRepository,
