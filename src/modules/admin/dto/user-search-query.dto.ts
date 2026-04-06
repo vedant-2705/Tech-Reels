@@ -2,6 +2,8 @@
  * @module modules/admin/dto/user-search-query.dto
  * @description
  * Query parameters DTO for GET /admin/users.
+ * Extends CursorPaginationDto for standard cursor + limit.
+ * Overrides default limit to 50 (admin endpoints show more items per page).
  */
 
 import {
@@ -9,19 +11,19 @@ import {
     IsInt,
     IsOptional,
     IsString,
-    IsUUID,
     Max,
     MaxLength,
     Min,
 } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { Transform, Type } from "class-transformer";
+import { Type } from "class-transformer";
+import { CursorPaginationDto } from "@common/dto/cursor-pagination.dto";
 import { ADMIN_USER_STATUSES, type AdminUserStatus } from "../admin.constants";
 
 /**
  * Query params for the admin user list endpoint.
  */
-export class UserSearchQueryDto {
+export class UserSearchQueryDto extends CursorPaginationDto {
     @ApiPropertyOptional({
         example: "alice",
         description:
@@ -31,7 +33,6 @@ export class UserSearchQueryDto {
     @IsOptional()
     @IsString()
     @MaxLength(100)
-    @Transform(({ value }) => (value as string)?.trim())
     q?: string;
 
     @ApiPropertyOptional({
@@ -52,15 +53,6 @@ export class UserSearchQueryDto {
     role?: string;
 
     @ApiPropertyOptional({
-        example: "019501a0-0000-7000-8000-000000000001",
-        description:
-            "UUID v7 cursor for keyset pagination (exclusive - returns rows after this ID).",
-    })
-    @IsOptional()
-    @IsUUID()
-    cursor?: string;
-
-    @ApiPropertyOptional({
         example: 50,
         description: "Number of users to return per page. Default 50, max 100.",
         minimum: 1,
@@ -72,5 +64,5 @@ export class UserSearchQueryDto {
     @IsInt()
     @Min(1)
     @Max(100)
-    limit?: number = 50;
+    override limit?: number = 50;
 }

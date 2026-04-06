@@ -5,19 +5,28 @@
  * identifiers, rate-limit configurations, and the canonical TAG_CATEGORIES
  * array used by the Tags module.
  *
+ * Cross-module keys (tags:all, tags:category, content_events) are imported
+ * from @common/constants/redis-keys.constants to prevent key-string drift.
+ *
  * TAG_CATEGORIES is the single source of truth for valid tag categories.
  * DTOs import from here - never hardcode the list elsewhere.
  * Adding a new category requires only updating this file; no migration needed.
  */
+
+import {
+    TAGS_ALL_KEY,
+    TAGS_CATEGORY_PREFIX,
+    PUBSUB_CONTENT_EVENTS,
+} from "@common/constants/redis-keys.constants";
 
 /**
  * Redis key constants used by the tags cache layer.
  */
 export const TAGS_REDIS_KEYS = {
     /** Cache key for the full tag catalogue (no category filter). */
-    ALL: "tags:all",
+    ALL: TAGS_ALL_KEY,
     /** Prefix for per-category cache keys. Append `:${category}` to build the full key. */
-    CATEGORY_PREFIX: "tags:category",
+    CATEGORY_PREFIX: TAGS_CATEGORY_PREFIX,
 } as const;
 
 /**
@@ -35,7 +44,7 @@ export const TAGS_MODULE_CONSTANTS = {
     /** Event name published to content_events when a tag is updated via PATCH. */
     TAG_UPDATED: "TAG_UPDATED",
     /** Redis Pub/Sub channel on which TAG_UPDATED events are published. */
-    CONTENT_EVENTS_CHANNEL: "content_events",
+    CONTENT_EVENTS_CHANNEL: PUBSUB_CONTENT_EVENTS,
 } as const;
 
 /**

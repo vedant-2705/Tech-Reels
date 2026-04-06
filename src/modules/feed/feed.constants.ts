@@ -4,7 +4,19 @@
  * Shared constants, Redis key prefixes, TTL values, scoring weights,
  * affinity deltas, difficulty preference multipliers, pub/sub channel
  * names, event names, and job reason values used across the Feed module.
+ *
+ * Cross-module keys are imported from @common/constants/redis-keys.constants.
  */
+
+import {
+    REEL_META_PREFIX as SHARED_REEL_META_PREFIX,
+    REEL_TAG_SET_PREFIX,
+    FEED_PREFIX as SHARED_FEED_PREFIX,
+    WATCHED_PREFIX as SHARED_WATCHED_PREFIX,
+    PUBSUB_USER_INTERACTIONS,
+    PUBSUB_VIDEO_TELEMETRY,
+    PUBSUB_FEED_EVENTS,
+} from "@common/constants/redis-keys.constants";
 
 // ---------------------------------------------------------------------------
 // Redis keys
@@ -17,13 +29,13 @@
  */
 export const FEED_REDIS_KEYS = {
     /** List: personalised feed reel IDs per user. TTL 1800s. Feed module writes, Reels reads. */
-    FEED_PREFIX: "feed",
+    FEED_PREFIX: SHARED_FEED_PREFIX,
     /** Sorted Set: trending reel IDs scored by 24h view count. TTL 900s. */
     TRENDING: "trending:reels",
     /** Bloom filter: watched reel IDs per user. Feed module reads, Reels writes. */
-    WATCHED_PREFIX: "watched",
+    WATCHED_PREFIX: SHARED_WATCHED_PREFIX,
     /** Set: active reel IDs per tag. Feed module reads, Reels writes. */
-    TAG_SET_PREFIX: "reel_tags:tag",
+    TAG_SET_PREFIX: REEL_TAG_SET_PREFIX,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -100,9 +112,9 @@ export const REEL_META_CACHE_TTL = 300;
  
 /**
  * Redis key prefix for reel meta hash.
- * Mirrors REELS_REDIS_KEYS.META_PREFIX - must stay in sync.
+ * Imported from shared constants - single source of truth.
  */
-export const REEL_META_PREFIX = "reel:meta";
+export const REEL_META_PREFIX = SHARED_REEL_META_PREFIX;
 
 // ---------------------------------------------------------------------------
 // Scoring weights
@@ -240,9 +252,9 @@ export const AFFINITY_DECAY_MULTIPLIER = 0.95;
  */
 export const FEED_MODULE_CONSTANTS = {
     // Channels subscribed to by FeedInteractionsSubscriber
-    USER_INTERACTIONS: "user_interactions",
-    VIDEO_TELEMETRY: "video_telemetry",
-    FEED_EVENTS: "feed_events",
+    USER_INTERACTIONS: PUBSUB_USER_INTERACTIONS,
+    VIDEO_TELEMETRY: PUBSUB_VIDEO_TELEMETRY,
+    FEED_EVENTS: PUBSUB_FEED_EVENTS,
 
     // Events on user_interactions channel
     REEL_LIKED: "REEL_LIKED",

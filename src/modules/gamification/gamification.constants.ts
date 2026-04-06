@@ -9,6 +9,11 @@
  * Import these constants everywhere - never hardcode strings or numbers.
  */
 
+import {
+    PUBSUB_VIDEO_TELEMETRY,
+    PUBSUB_CONTENT_EVENTS,
+} from "@common/constants/redis-keys.constants";
+
 // ---------------------------------------------------------------------------
 // XP sources (must match xp_source enum in migration 005 exactly)
 // ---------------------------------------------------------------------------
@@ -125,12 +130,12 @@ export const SSE_EVENTS_CHANNEL = "sse_events";
 /**
  * Pub/Sub channel for video telemetry events (REEL_WATCH_ENDED source).
  */
-export const VIDEO_TELEMETRY_CHANNEL = "video_telemetry";
+export const VIDEO_TELEMETRY_CHANNEL = PUBSUB_VIDEO_TELEMETRY;
 
 /**
  * Pub/Sub channel for content events (PATH_COMPLETED source).
  */
-export const CONTENT_EVENTS_CHANNEL = "content_events";
+export const CONTENT_EVENTS_CHANNEL = PUBSUB_CONTENT_EVENTS;
 
 /**
  * Events published by the Gamification module.

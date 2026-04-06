@@ -8,6 +8,8 @@
  * Import these constants everywhere - never hardcode strings or numbers.
  */
 
+import { PUBSUB_VIDEO_TELEMETRY } from "@common/constants/redis-keys.constants";
+
 // ---------------------------------------------------------------------------
 // Enrolment status
 // ---------------------------------------------------------------------------
@@ -99,7 +101,7 @@ export const SKILL_PATH_MAX_REELS = 50;
  *                    not this channel - the publish is for any future module.
  */
 export const SKILL_PATH_PUBSUB = {
-    SUBSCRIBE_CHANNEL: "video_telemetry",
+    SUBSCRIBE_CHANNEL: PUBSUB_VIDEO_TELEMETRY,
     PUBLISH_CHANNEL: "gamification_events",
     EVENTS: {
         REEL_WATCH_ENDED: "REEL_WATCH_ENDED",

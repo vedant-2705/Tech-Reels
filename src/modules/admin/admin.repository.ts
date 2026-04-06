@@ -47,7 +47,7 @@ import {
     type AnalyticsPeriod,
 } from "./admin.constants";
 
-import { REELS_REDIS_KEYS } from "@modules/reels/reels.constants";
+import { REEL_META_PREFIX } from "@common/constants/redis-keys.constants";
 import { BaseRepository } from "@database/base.repository";
 
 /** Input shape for searchUsers. */
@@ -409,7 +409,7 @@ export class AdminRepository extends BaseRepository {
      * @param reelId Reel UUID.
      */
     async evictReelCache(reelId: string): Promise<void> {
-        await this.redis.del(`${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`);
+        await this.redis.del(`${REEL_META_PREFIX}:${reelId}`);
     }
 
     //  Challenge methods 

@@ -8,6 +8,8 @@
  * Import these constants everywhere instead of hardcoding strings or numbers.
  */
 
+import { PUBSUB_CONTENT_EVENTS } from "@common/constants/redis-keys.constants";
+
 /**
  * Redis key prefixes used by the Media module.
  *
@@ -63,7 +65,7 @@ export const MEDIA_MODULE_CONSTANTS = {
     REEL_CREATED: "REEL_CREATED",
 
     /** Redis Pub/Sub channel for all content lifecycle events. */
-    CONTENT_EVENTS: "content_events",
+    CONTENT_EVENTS: PUBSUB_CONTENT_EVENTS,
 } as const;
 
 /**

@@ -5,6 +5,8 @@
  * names, and provider metadata used by the auth module.
  */
 
+import { PUBSUB_TRANSACTIONAL } from "@common/constants/redis-keys.constants";
+
 /**
  * Auth module event names and shared pub/sub channel identifiers.
  */
@@ -12,7 +14,7 @@ export const AUTH_MODULE_CONSTANTS = {
     USER_LOGGED_IN: "USER_LOGGED_IN",
     USER_LOGGED_OUT: "USER_LOGGED_OUT",
 
-    TRANSACTIONAL_CHANNEL: "transactional",
+    TRANSACTIONAL_CHANNEL: PUBSUB_TRANSACTIONAL,
 } as const;
 
 /**

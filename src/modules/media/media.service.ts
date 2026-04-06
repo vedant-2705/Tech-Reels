@@ -28,8 +28,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
 import { RedisService } from "@redis/redis.service";
-import { REELS_REDIS_KEYS } from "@modules/reels/reels.constants";
-import { TAGS_REDIS_KEYS } from "@modules/tags/tags.constants";
+import {
+    REEL_META_PREFIX,
+    REEL_TAG_SET_PREFIX,
+    TAGS_ALL_KEY,
+    TAGS_CATEGORY_PREFIX,
+} from "@common/constants/redis-keys.constants";
 import { ReelsProcessingService } from "@modules/reels/reels-processing.service";
 
 import { MediaRepository } from "./media.repository";
@@ -190,7 +194,7 @@ export class MediaService {
         });
 
         //  Step 4: Invalidate reel meta cache 
-        const metaKey = `${REELS_REDIS_KEYS.META_PREFIX}:${reelId}`;
+        const metaKey = `${REEL_META_PREFIX}:${reelId}`;
         await this.redis.del(metaKey);
 
         //  Step 5: Populate reel_tags:tag:{tagId} Sets 
@@ -199,20 +203,20 @@ export class MediaService {
 
         await Promise.all(
             tags.map((tag) => {
-                const tagSetKey = `${REELS_REDIS_KEYS.TAG_SET_PREFIX}:${tag.id}`;
+                const tagSetKey = `${REEL_TAG_SET_PREFIX}:${tag.id}`;
                 return this.redis.sadd(tagSetKey, reelId);
             }),
         );
 
         //  Step 6: Invalidate tags cache 
-        await this.redis.del(TAGS_REDIS_KEYS.ALL);
+        await this.redis.del(TAGS_ALL_KEY);
 
         // Collect unique categories and delete per-category cache keys.
         const categories = [...new Set(tags.map((t) => t.category))];
         await Promise.all(
             categories.map((category) =>
                 this.redis.deletePattern(
-                    `${TAGS_REDIS_KEYS.CATEGORY_PREFIX}:${category}`,
+                    `${TAGS_CATEGORY_PREFIX}:${category}`,
                 ),
             ),
         );

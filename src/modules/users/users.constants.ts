@@ -6,6 +6,8 @@
  * used by the users module.
  */
 
+import { PUBSUB_TRANSACTIONAL } from "@common/constants/redis-keys.constants";
+
 /**
  * Redis key prefixes used by users caching.
  */
@@ -45,9 +47,10 @@ export const USERS_MESSAGES = {
 /**
  * Users module event names and shared Pub/Sub channel identifiers.
  */
+
 export const USERS_MODULE_CONSTANTS = {
     ACCOUNT_DEACTIVATED: "ACCOUNT_DEACTIVATED",
-    TRANSACTIONAL_CHANNEL: "transactional",
+    TRANSACTIONAL_CHANNEL: PUBSUB_TRANSACTIONAL,
 } as const;
 
 /**

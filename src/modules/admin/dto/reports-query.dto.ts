@@ -2,11 +2,14 @@
  * @module modules/admin/dto/reports-query.dto
  * @description
  * Query parameters DTO for GET /admin/reports.
+ * Extends CursorPaginationDto for standard cursor + limit.
+ * Overrides default limit to 50 (admin endpoints show more items per page).
  */
 
-import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
+import { IsEnum, IsInt, IsOptional, Max, Min } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
+import { CursorPaginationDto } from "@common/dto/cursor-pagination.dto";
 import {
     REPORT_STATUSES,
     type ReportStatus,
@@ -30,7 +33,7 @@ type ReportReason = (typeof REPORT_REASONS)[number];
 /**
  * Query params for the admin reports list endpoint.
  */
-export class ReportsQueryDto {
+export class ReportsQueryDto extends CursorPaginationDto {
     @ApiPropertyOptional({
         example: "pending",
         description:
@@ -52,14 +55,6 @@ export class ReportsQueryDto {
     reason?: ReportReason;
 
     @ApiPropertyOptional({
-        example: "019501a0-0000-7000-8000-000000000001",
-        description: "UUID v7 cursor for keyset pagination (exclusive).",
-    })
-    @IsOptional()
-    @IsUUID()
-    cursor?: string;
-
-    @ApiPropertyOptional({
         example: 50,
         description:
             "Number of reports to return per page. Default 50, max 100.",
@@ -72,5 +67,5 @@ export class ReportsQueryDto {
     @IsInt()
     @Min(1)
     @Max(100)
-    limit?: number = 50;
+    override limit?: number = 50;
 }

@@ -30,7 +30,7 @@ import {
     ApiTags,
 } from "@nestjs/swagger";
 
-import { AdminService } from "./admin.service";
+import { AdminService } from "./admin.service.abstract";
 
 import { UserSearchQueryDto } from "./dto/user-search-query.dto";
 import {

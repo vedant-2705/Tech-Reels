@@ -19,10 +19,11 @@
 import { Module } from "@nestjs/common";
 
 import { AdminController } from "./admin.controller";
-import { AdminService } from "./admin.service";
+import { AdminService } from "./admin.service.abstract";
 import { AdminRepository } from "./admin.repository";
 
 import { AuthModule } from "@modules/auth/auth.module";
+import { AdminServiceImpl } from "./admin.service";
 
 /**
  * Registers Admin runtime dependencies and cross-module imports.
@@ -37,6 +38,9 @@ import { AuthModule } from "@modules/auth/auth.module";
         AuthModule,
     ],
     controllers: [AdminController],
-    providers: [AdminService, AdminRepository],
+    providers: [
+        { provide: AdminService, useClass: AdminServiceImpl }, 
+        AdminRepository
+    ],
 })
 export class AdminModule {}
