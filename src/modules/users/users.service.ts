@@ -11,8 +11,6 @@
  */
 
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 import * as crypto from "crypto";
 
 import { UsersService } from "./users.service.abstract";
@@ -47,7 +45,6 @@ import { ProfileNotFoundException } from "./exceptions/profile-not-found.excepti
 import { InvalidAvatarKeyException } from "./exceptions/invalid-avatar-key.exception";
 
 import { compareHash } from "@common/utils/hash.util";
-import { QUEUES } from "@queues/queue-names";
 import {
     USERS_ACCOUNT_STATUSES,
     USERS_MESSAGES,
@@ -65,6 +62,8 @@ import {
 import { buildAvatarKey } from "./utils/build-avatar-key.util";
 import { ConfigService } from "@nestjs/config";
 import { LeaderboardResponseDto } from "./dto/leaderboard-response.dto";
+import { MessagingService } from "@modules/messaging";
+import { USERS } from "@modules/messaging";
 
 /**
  * Coordinates all user profile use cases, side effects, and cross-module
@@ -84,8 +83,7 @@ export class UsersServiceImpl extends UsersService {
         private readonly authSessionService: AuthSessionService,
         private readonly s3Service: S3Service,
         private readonly redis: RedisService,
-        @InjectQueue(QUEUES.FEED_BUILD)
-        private readonly feedBuildQueue: Queue,
+        private readonly messagingService: MessagingService,
         private readonly config: ConfigService,
     ) {
         super();
@@ -174,9 +172,9 @@ export class UsersServiceImpl extends UsersService {
             await this.redis.del(
                 `${USERS_REDIS_KEYS.FEED_QUEUE_PREFIX}:${userId}`,
             );
-            void this.feedBuildQueue.add(USERS_QUEUE_JOBS.REBUILD_FEED, {
+            void this.messagingService.dispatchJob(USERS.QUEUE_JOBS.REBUILD, {
                 userId,
-                reason: USERS_QUEUE_JOBS.REBUILD_FEED,
+                reason: USERS.QUEUE_JOBS.REBUILD,
             });
         }
 
@@ -219,9 +217,9 @@ export class UsersServiceImpl extends UsersService {
         await this.usersRepository.seedTopicAffinity(userId, dto.topics, 1.0);
 
         // Enqueue feed build - fire and forget
-        void this.feedBuildQueue.add(USERS_QUEUE_JOBS.NEW_USER, {
+        void this.messagingService.dispatchJob(USERS.QUEUE_JOBS.NEW_USER, {
             userId,
-            reason: USERS_QUEUE_JOBS.NEW_USER,
+            reason: USERS.QUEUE_JOBS.NEW_USER,
         });
 
         return {
@@ -344,14 +342,19 @@ export class UsersServiceImpl extends UsersService {
         await this.authSessionService.incrementTokenVersion(userId);
 
         // Publish ACCOUNT_DEACTIVATED to transactional Pub/Sub channel
-        void this.redis.publish(
-            USERS_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
-            JSON.stringify({
-                event: USERS_MODULE_CONSTANTS.ACCOUNT_DEACTIVATED,
-                userId,
-                timestamp: new Date().toISOString(),
-            }),
-        );
+        // void this.redis.publish(
+        //     USERS_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
+        //     JSON.stringify({
+        //         event: USERS_MODULE_CONSTANTS.ACCOUNT_DEACTIVATED,
+        //         userId,
+        //         timestamp: new Date().toISOString(),
+        //     }),
+        // );
+
+        void this.messagingService.dispatchEvent(
+            USERS_MODULE_CONSTANTS.ACCOUNT_DEACTIVATED,
+            { userId }
+        )
 
         return { message: USERS_MESSAGES.ACCOUNT_DEACTIVATED };
     }

@@ -18,16 +18,10 @@ import {
     ReelWatchEndedEventPayload,
     PathCompletedEventPayload,
 } from "@modules/messaging/messaging.interface";
-import {
-    GAMIFICATION_QUEUE_JOBS,
-    REDIS_CHANNELS,
-    VIDEO_TELEMETRY_EVENTS,
-    GAMIFICATION_EVENTS,
-} from "@modules/messaging/messaging.constants";
-import {
-    XP_SOURCE,
-    REEL_WATCH_XP_REWARD,
-} from "../gamification.constants";
+import { REDIS_CHANNELS } from "@modules/messaging/messaging.constants";
+import { XP_SOURCE, REEL_WATCH_XP_REWARD } from "../gamification.constants";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { GAMIFICATION_MANIFEST } from "../gamification.messaging";
 
 @Injectable()
 export class GamificationSubscriber extends BaseSubscriber {
@@ -62,7 +56,7 @@ export class GamificationSubscriber extends BaseSubscriber {
     ): Promise<void> {
         if (
             channel === REDIS_CHANNELS.VIDEO_TELEMETRY &&
-            message.type === VIDEO_TELEMETRY_EVENTS.REEL_WATCH_ENDED
+            message.type === REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType
         ) {
             await this.handleReelWatchEnded(
                 message.payload as ReelWatchEndedEventPayload,
@@ -72,7 +66,8 @@ export class GamificationSubscriber extends BaseSubscriber {
 
         if (
             channel === REDIS_CHANNELS.CONTENT_EVENTS &&
-            message.type === GAMIFICATION_EVENTS.PATH_COMPLETED
+            message.type ===
+                GAMIFICATION_MANIFEST.events.PATH_COMPLETED.eventType
         ) {
             await this.handlePathCompleted(
                 message.payload as PathCompletedEventPayload,
@@ -93,7 +88,7 @@ export class GamificationSubscriber extends BaseSubscriber {
         this.logger.debug(`REEL_WATCH_ENDED userId=${userId} reelId=${reelId}`);
 
         void this.messagingService.dispatchJob(
-            GAMIFICATION_QUEUE_JOBS.XP_AWARD,
+            GAMIFICATION_MANIFEST.jobs.XP_AWARD.jobName,
             {
                 userId,
                 source: XP_SOURCE.REEL_WATCH,
@@ -103,15 +98,15 @@ export class GamificationSubscriber extends BaseSubscriber {
         );
 
         void this.messagingService.dispatchJob(
-            GAMIFICATION_QUEUE_JOBS.UPDATE_USER_STREAK,
+            GAMIFICATION_MANIFEST.jobs.UPDATE_USER_STREAK.jobName,
             { userId },
         );
 
         void this.messagingService.dispatchJob(
-            GAMIFICATION_QUEUE_JOBS.BADGE_EVALUATION,
+            GAMIFICATION_MANIFEST.jobs.BADGE_EVALUATION.jobName,
             {
                 userId,
-                event: VIDEO_TELEMETRY_EVENTS.REEL_WATCH_ENDED,
+                event: REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType,
                 meta: { reelId },
             },
         );
@@ -125,7 +120,7 @@ export class GamificationSubscriber extends BaseSubscriber {
         this.logger.debug(`PATH_COMPLETED userId=${userId} pathId=${pathId}`);
 
         void this.messagingService.dispatchJob(
-            GAMIFICATION_QUEUE_JOBS.XP_AWARD,
+            GAMIFICATION_MANIFEST.jobs.XP_AWARD.jobName,
             {
                 userId,
                 source: XP_SOURCE.PATH_COMPLETED,
@@ -135,10 +130,10 @@ export class GamificationSubscriber extends BaseSubscriber {
         );
 
         void this.messagingService.dispatchJob(
-            GAMIFICATION_QUEUE_JOBS.BADGE_EVALUATION,
+            GAMIFICATION_MANIFEST.jobs.BADGE_EVALUATION.jobName,
             {
                 userId,
-                event: GAMIFICATION_EVENTS.PATH_COMPLETED,
+                event: GAMIFICATION_MANIFEST.events.PATH_COMPLETED.eventType,
                 meta: { pathId },
             },
         );

@@ -45,7 +45,7 @@ export type {
 // Constants - job names
 export {
     AUTH,
-    USERS_QUEUE_JOBS,
+    // USERS,
     REELS,
     SKILL_PATH_QUEUE_JOBS,
     CHALLENGES_QUEUE_JOBS,
@@ -66,3 +66,5 @@ export { REDIS_CHANNELS } from "./messaging.constants";
 
 // Constants - job options
 export { DEFAULT_JOB_OPTIONS } from "./messaging.constants";
+
+export * from "./messaging.constants";

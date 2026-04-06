@@ -22,10 +22,13 @@ export const AUTH = {
         USER_LOGGED_IN: "USER_LOGGED_IN",
         USER_LOGGED_OUT: "USER_LOGGED_OUT",
     },
-};
+} as const;
 
-export const USERS_QUEUE_JOBS = {
-    REBUILD: "rebuild",
+export const USERS = {
+    QUEUE_JOBS: {
+        REBUILD: "rebuild",
+        NEW_USER: AUTH.QUEUE_JOBS.NEW_USER,
+    },
 } as const;
 
 export const REELS = {

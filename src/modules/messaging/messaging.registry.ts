@@ -1,105 +1,118 @@
-import { QUEUES } from "src/queues/queue-names";
-import {
-    AUTH,
-    REELS,
-    CHALLENGES_QUEUE_JOBS,
-    FEED_EVENTS,
-    GAMIFICATION_EVENTS,
-    GAMIFICATION_QUEUE_JOBS,
-    NOTIFICATION_QUEUE_JOBS,
-    REDIS_CHANNELS,
-    SKILL_PATH_QUEUE_JOBS,
-    USER_INTERACTION_EVENTS,
-    USERS_QUEUE_JOBS,
-    VIDEO_TELEMETRY_EVENTS,
-} from "./messaging.constants";
+/**
+ * @module modules/messaging/messaging.registry
+ * @description
+ * Merges all module messaging manifests into the two flat lookup maps
+ * used by MessagingService at runtime.
+ *
+ * Rules:
+ *   - This file imports manifests, never individual job/event strings.
+ *   - Adding a new route = edit the relevant module's *.messaging.ts file.
+ *   - Adding a new module = add one import + one merge call here.
+ *   - Duplicate job name strings across modules that target DIFFERENT queues
+ *     will throw at startup (detected by buildJobRegistry).
+ *   - Duplicate event type strings across modules that target DIFFERENT channels
+ *     will throw at startup (detected by buildEventRegistry).
+ */
+
+import { ModuleMessagingManifest } from "./messaging.types";
 
 // ---------------------------------------------------------------------------
-// JOB -> QUEUE REGISTRY
-//
-// Single source of truth: job name string -> physical queue name.
-//
-// Rules:
-//   - Key:   exact string value from a *_QUEUE_JOBS constant
-//             (must match what queue.add(jobName) receives)
-//   - Value: physical queue name from QUEUES
-//
-// To add a new job type:
-//   1. Add the queue to QueuesModule (if it doesn't exist)
-//   2. Add one line here
-//   MessagingService and all callers stay untouched.
+// Module manifest imports
+// One import per module that publishes jobs or events.
+// Pure subscribers (Feed) are not listed here — they have no manifest.
 // ---------------------------------------------------------------------------
 
-export const JOB_QUEUE_REGISTRY: Readonly<Record<string, string>> = {
-    // Auth
-    [AUTH.QUEUE_JOBS.WELCOME_EMAIL]: QUEUES.NOTIFICATION,
-    [AUTH.QUEUE_JOBS.NEW_USER]: QUEUES.FEED_BUILD,
-
-    // Users
-    [USERS_QUEUE_JOBS.REBUILD]: QUEUES.FEED_BUILD,
-
-    // Reels
-    // Reels — strings match reels.constants.ts REELS_QUEUE_JOBS exactly
-    [REELS.QUEUE_JOBS.VIDEO_PROCESS]: QUEUES.VIDEO_PROCESSING,
-    [REELS.QUEUE_JOBS.FEED_COLD_START]: QUEUES.FEED_BUILD,
-    [REELS.QUEUE_JOBS.FEED_SEARCH]: QUEUES.FEED_BUILD,
-    [REELS.QUEUE_JOBS.FEED_SHARE]: QUEUES.FEED_BUILD,
-
-    // Gamification (owns the canonical xp_award and badge_evaluation strings)
-    [GAMIFICATION_QUEUE_JOBS.XP_AWARD]: QUEUES.XP_AWARD,
-    [GAMIFICATION_QUEUE_JOBS.BADGE_EVALUATION]: QUEUES.BADGE_EVALUATION,
-    [GAMIFICATION_QUEUE_JOBS.WEEKLY_LEADERBOARD_RESET]:
-        QUEUES.LEADERBOARD_RESET,
-    [GAMIFICATION_QUEUE_JOBS.STREAK_RESET]: QUEUES.STREAK_RESET,
-    [GAMIFICATION_QUEUE_JOBS.UPDATE_USER_STREAK]: QUEUES.STREAK_RESET,
-
-    // Skill Paths (namespaced strings - different callers, same target queues)
-    [SKILL_PATH_QUEUE_JOBS.XP_AWARD]: QUEUES.XP_AWARD,
-    [SKILL_PATH_QUEUE_JOBS.BADGE_EVALUATION]: QUEUES.BADGE_EVALUATION,
-    [SKILL_PATH_QUEUE_JOBS.NOTIFICATION]: QUEUES.NOTIFICATION,
-
-    // Challenges (namespaced strings)
-    [CHALLENGES_QUEUE_JOBS.XP_AWARD]: QUEUES.XP_AWARD,
-    [CHALLENGES_QUEUE_JOBS.BADGE_EVALUATION]: QUEUES.BADGE_EVALUATION,
-
-    // Notifications
-    [NOTIFICATION_QUEUE_JOBS.SEND_NOTIFICATION]: QUEUES.NOTIFICATION,
-} as const;
+import { AUTH_MANIFEST } from "@modules/auth/auth.messaging";
+import { USERS_MANIFEST } from "@modules/users/users.messaging";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { GAMIFICATION_MANIFEST } from "@modules/gamification/gamification.messaging";
+import { CHALLENGES_MANIFEST } from "@modules/challenges/challenges.messaging";
+import { SKILL_PATHS_MANIFEST } from "@modules/skill-paths/skill-paths.messaging";
+import { NOTIFICATION_MANIFEST } from "@modules/notification/notification.messaging";
+import { TAGS_MANIFEST } from "@modules/tags/tags.messaging";
+import { MEDIA_MANIFEST } from "@modules/media/media.messaging";
+import { ADMIN_MANIFEST } from "@modules/admin/admin.messaging";
 
 // ---------------------------------------------------------------------------
-// EVENT -> CHANNEL REGISTRY
-//
-// Single source of truth: event type string -> physical Redis channel.
-//
-// Rules:
-//   - Key:   exact string value from a *_EVENTS constant
-//   - Value: physical channel name from REDIS_CHANNELS
-//
-// To add a new event type: add one line here. Nothing else changes.
+// Registry builders
 // ---------------------------------------------------------------------------
 
-export const EVENT_CHANNEL_REGISTRY: Readonly<Record<string, string>> = {
-    // Feed & Content
-    [FEED_EVENTS.FEED_LOW]: REDIS_CHANNELS.FEED_EVENTS,
-    [FEED_EVENTS.CONTENT_EVENT]: REDIS_CHANNELS.CONTENT_EVENTS,
-    [FEED_EVENTS.REEL_DELETED]: REDIS_CHANNELS.CONTENT_EVENTS,
-    [FEED_EVENTS.REEL_STATUS_CHANGED]: REDIS_CHANNELS.CONTENT_EVENTS,
-    [FEED_EVENTS.TAG_UPDATED]: REDIS_CHANNELS.CONTENT_EVENTS,
+/**
+ * Merges all manifest job entries into a flat jobName -> queueName map.
+ * Throws on duplicate job name strings targeting different queues —
+ * that is a routing ambiguity that must be resolved at the manifest level.
+ */
+function buildJobRegistry(
+    ...manifests: ModuleMessagingManifest[]
+): Readonly<Record<string, string>> {
+    const registry: Record<string, string> = {};
 
-    // Video Telemetry
-    [VIDEO_TELEMETRY_EVENTS.REEL_WATCH_ENDED]: REDIS_CHANNELS.VIDEO_TELEMETRY,
+    for (const manifest of manifests) {
+        if (!manifest.jobs) continue;
 
-    // User Interactions
-    [USER_INTERACTION_EVENTS.REEL_LIKED]: REDIS_CHANNELS.USER_INTERACTIONS,
-    [USER_INTERACTION_EVENTS.REEL_UNLIKED]: REDIS_CHANNELS.USER_INTERACTIONS,
-    [USER_INTERACTION_EVENTS.REEL_SAVED]: REDIS_CHANNELS.USER_INTERACTIONS,
-    [USER_INTERACTION_EVENTS.REEL_UNSAVED]: REDIS_CHANNELS.USER_INTERACTIONS,
-    [USER_INTERACTION_EVENTS.REEL_SHARED]: REDIS_CHANNELS.USER_INTERACTIONS,
+        for (const [key, entry] of Object.entries(manifest.jobs)) {
+            const existing = registry[entry.jobName];
+            if (existing && existing !== entry.queue) {
+                throw new Error(
+                    `MessagingRegistry: Job name collision — ` +
+                        `"${entry.jobName}" is registered to both ` +
+                        `"${existing}" and "${entry.queue}". ` +
+                        `Use a namespaced job name to disambiguate (e.g. "module:job_name").`,
+                );
+            }
+            registry[entry.jobName] = entry.queue;
+        }
+    }
 
-    // Gamification
-    [GAMIFICATION_EVENTS.XP_AWARDED]: REDIS_CHANNELS.GAMIFICATION_EVENTS,
-    [GAMIFICATION_EVENTS.BADGE_EARNED]: REDIS_CHANNELS.GAMIFICATION_EVENTS,
-    [GAMIFICATION_EVENTS.PATH_COMPLETED]: REDIS_CHANNELS.GAMIFICATION_EVENTS,
-    [GAMIFICATION_EVENTS.ATTEMPT_SUBMITTED]: REDIS_CHANNELS.GAMIFICATION_EVENTS,
-    [GAMIFICATION_EVENTS.CHALLENGE_CORRECT]: REDIS_CHANNELS.GAMIFICATION_EVENTS,
-} as const;
+    return Object.freeze(registry);
+}
+
+/**
+ * Merges all manifest event entries into a flat eventType -> channel map.
+ * Throws on duplicate event type strings targeting different channels.
+ */
+function buildEventRegistry(
+    ...manifests: ModuleMessagingManifest[]
+): Readonly<Record<string, string>> {
+    const registry: Record<string, string> = {};
+
+    for (const manifest of manifests) {
+        if (!manifest.events) continue;
+
+        for (const [key, entry] of Object.entries(manifest.events)) {
+            const existing = registry[entry.eventType];
+            if (existing && existing !== entry.channel) {
+                throw new Error(
+                    `MessagingRegistry: Event type collision — ` +
+                        `"${entry.eventType}" is registered to both ` +
+                        `"${existing}" and "${entry.channel}". ` +
+                        `Each event type string must map to exactly one channel.`,
+                );
+            }
+            registry[entry.eventType] = entry.channel;
+        }
+    }
+
+    return Object.freeze(registry);
+}
+
+// ---------------------------------------------------------------------------
+// Exported registries
+// Used by MessagingService.resolveQueue() and MessagingService.resolveChannel()
+// ---------------------------------------------------------------------------
+
+const ALL_MANIFESTS: ModuleMessagingManifest[] = [
+    AUTH_MANIFEST,
+    USERS_MANIFEST,
+    REELS_MANIFEST,
+    GAMIFICATION_MANIFEST,
+    CHALLENGES_MANIFEST,
+    SKILL_PATHS_MANIFEST,
+    NOTIFICATION_MANIFEST,
+    TAGS_MANIFEST,
+    MEDIA_MANIFEST,
+    ADMIN_MANIFEST,
+];
+
+export const JOB_QUEUE_REGISTRY = buildJobRegistry(...ALL_MANIFESTS);
+export const EVENT_CHANNEL_REGISTRY = buildEventRegistry(...ALL_MANIFESTS);
