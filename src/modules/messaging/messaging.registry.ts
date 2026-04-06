@@ -1,6 +1,6 @@
 import { QUEUES } from "src/queues/queue-names";
 import {
-    AUTH_QUEUE_JOBS,
+    AUTH,
     CHALLENGES_QUEUE_JOBS,
     FEED_EVENTS,
     GAMIFICATION_EVENTS,
@@ -32,8 +32,8 @@ import {
 
 export const JOB_QUEUE_REGISTRY: Readonly<Record<string, string>> = {
     // Auth
-    [AUTH_QUEUE_JOBS.WELCOME_EMAIL]: QUEUES.NOTIFICATION,
-    [AUTH_QUEUE_JOBS.NEW_USER]: QUEUES.FEED_BUILD,
+    [AUTH.QUEUE_JOBS.WELCOME_EMAIL]: QUEUES.NOTIFICATION,
+    [AUTH.QUEUE_JOBS.NEW_USER]: QUEUES.FEED_BUILD,
 
     // Users
     [USERS_QUEUE_JOBS.REBUILD]: QUEUES.FEED_BUILD,
