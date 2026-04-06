@@ -6,8 +6,6 @@
  */
 
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 
 import { AuthService } from "./auth.service.abstract";
 import { AuthRepository } from "./auth.repository";
@@ -35,28 +33,18 @@ import { SessionExpiredException } from "@modules/auth/exceptions/session-expire
 import { TokenReuseException } from "@modules/auth/exceptions/token-reuse.exception";
 import { InvalidProviderException } from "@modules/auth/exceptions/invalid-provider.exception";
 
-import { QUEUES } from "@queues/queue-names";
-import { RedisService } from "@redis/redis.service";
-
 import {
     compareHash,
     DUMMY_HASH,
     hashValue,
 } from "@common/utils/hash.util";
 import {
-    UserLoggedInEvent,
-    UserLoggedOutEvent,
-} from "./events/user-registered.event";
-import {
     AUTH_BCRYPT_ROUNDS,
     AUTH_MESSAGES,
-    AUTH_MODULE_CONSTANTS,
     AUTH_OAUTH,
-    AUTH_QUEUE_JOBS,
 } from "./auth.constants";
 import { USERS_ACCOUNT_STATUS } from "@common/constants/shared.constants";
-import { MessagingService } from "@modules/messaging";
-import { use } from "passport";
+import { AUTH, MessagingService } from "@modules/messaging";
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
@@ -81,7 +69,6 @@ export class AuthServiceImpl extends AuthService {
         private readonly oauthService: OAuthService,
         private readonly tokenService: TokenService,
         private readonly usernameGeneratorService: UsernameGeneratorService,
-        private readonly redis: RedisService,
        private readonly messagingService: MessagingService,
     ) {
         super();
@@ -124,15 +111,20 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 7. Async side effects - fire and forget (don't await, don't block response)
+        void this.messagingService.dispatchEvent(
+            AUTH.EVENTS.USER_REGISTERED,
+            { userId: user.id },
+        );
+
         void this.messagingService.dispatchJob(
-            AUTH_QUEUE_JOBS.WELCOME_EMAIL, 
+            AUTH.QUEUE_JOBS.WELCOME_EMAIL, 
             { userId: user.id }
         );
         void this.messagingService.dispatchJob(
-            AUTH_QUEUE_JOBS.NEW_USER, 
+            AUTH.QUEUE_JOBS.NEW_USER, 
             { 
                 userId: user.id,
-                reason: AUTH_QUEUE_JOBS.NEW_USER,
+                reason: AUTH.QUEUE_JOBS.NEW_USER,
             }
         );
 
@@ -193,7 +185,7 @@ export class AuthServiceImpl extends AuthService {
 
         // 7. Publish login event to Pub/Sub
         void this.messagingService.dispatchEvent(
-            AUTH_MODULE_CONSTANTS.USER_LOGGED_IN,
+            AUTH.EVENTS.USER_LOGGED_IN,
             { userId: user.id },
         );
 
@@ -264,7 +256,7 @@ export class AuthServiceImpl extends AuthService {
 
                 // Async side effects for new users
                 void this.messagingService.dispatchJob(
-                    AUTH_QUEUE_JOBS.WELCOME_EMAIL,
+                    AUTH.QUEUE_JOBS.WELCOME_EMAIL,
                     { userId: user.id }
                 );
             }
@@ -282,7 +274,7 @@ export class AuthServiceImpl extends AuthService {
 
         // 8. Publish login event
         void this.messagingService.dispatchEvent(
-            AUTH_MODULE_CONSTANTS.USER_LOGGED_IN,
+            AUTH.EVENTS.USER_LOGGED_IN,
             { userId: user.id },
         );
 
@@ -371,7 +363,7 @@ export class AuthServiceImpl extends AuthService {
         await this.authRepository.deleteRefreshToken(userId, tokenFamily);
 
         void this.messagingService.dispatchEvent(
-            AUTH_MODULE_CONSTANTS.USER_LOGGED_OUT,
+            AUTH.EVENTS.USER_LOGGED_OUT,
             { userId },
         );
 

@@ -2,7 +2,7 @@ export { MessagingModule } from "./messaging.module";
 export { MessagingService } from "./messaging.service";
 export type { AppMessage, AppMessageMetadata } from "./messaging.interface";
 export {
-    AUTH_QUEUE_JOBS,
+    AUTH,
     USERS_QUEUE_JOBS,
     REELS_QUEUE_JOBS,
     SKILL_PATH_QUEUE_JOBS,

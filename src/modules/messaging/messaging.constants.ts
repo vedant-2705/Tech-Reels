@@ -12,10 +12,18 @@ import { JobsOptions } from "bullmq";
 // one, but the physical string routes to the correct queue via the registry.
 // ---------------------------------------------------------------------------
 
-export const AUTH_QUEUE_JOBS = {
-    WELCOME_EMAIL: "welcome_email",
-    NEW_USER: "new_user",
-} as const;
+export const AUTH = {
+    QUEUE_JOBS: {
+        WELCOME_EMAIL: "welcome_email",
+        NEW_USER: "new_user",
+    },
+    EVENTS: {
+        USER_REGISTERED: "USER_REGISTERED",
+        USER_LOGGED_IN: "USER_LOGGED_IN",
+        USER_LOGGED_OUT: "USER_LOGGED_OUT",
+    }
+
+}
 
 export const USERS_QUEUE_JOBS = {
     REBUILD: "rebuild",
