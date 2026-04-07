@@ -24,6 +24,7 @@ import { AdminRepository } from "./admin.repository";
 
 import { AuthModule } from "@modules/auth/auth.module";
 import { AdminServiceImpl } from "./admin.service";
+import { MessagingModule } from "@modules/messaging";
 
 /**
  * Registers Admin runtime dependencies and cross-module imports.
@@ -36,6 +37,7 @@ import { AdminServiceImpl } from "./admin.service";
          * on user suspend/ban.
          */
         AuthModule,
+        MessagingModule,
     ],
     controllers: [AdminController],
     providers: [

@@ -10,6 +10,7 @@
  * The registry deduplicates safely since jobName + queue are identical.
  */
 
+import { GAMIFICATION_MANIFEST } from "@modules/gamification/gamification.messaging";
 import { ModuleMessagingManifest } from "@modules/messaging/messaging.types";
 import { QUEUES } from "src/queues/queue-names";
 
@@ -19,5 +20,10 @@ export const ADMIN_MANIFEST = {
             jobName: "send_notification",
             queue: QUEUES.NOTIFICATION,
         },
+        ADMIN_MESSAGE: {
+            jobName: "admin_message",
+            queue: QUEUES.NOTIFICATION,
+        },
+        XP_AWARD: GAMIFICATION_MANIFEST.jobs.XP_AWARD,
     },
 } as const satisfies ModuleMessagingManifest;

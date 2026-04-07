@@ -17,7 +17,7 @@ import { Queue } from 'bullmq';
 
 import { QUEUES } from '@queues/queue-names';
 import { NOTIFICATION_QUEUE_JOBS, NotificationType } from './notification.constants';
-import { NotificationJobPayload } from './entities/notification.entity';
+import { NotificationJobPayload, NotificationMetas } from './notification.interface';
 
 /**
  * Notification service: enqueues notification jobs.
@@ -43,10 +43,10 @@ export class NotificationService {
   async enqueueNotification(
     type: NotificationType,
     userId: string,
-    meta: Record<string, unknown>,
+    meta: NotificationMetas,
   ): Promise<void> {
     const payload: NotificationJobPayload = {
-      type,
+      // type,
       userId,
       meta,
     };

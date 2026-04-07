@@ -14,26 +14,34 @@
  * Notifications are fire-and-forget; errors are logged but don't fail the entire job.
  */
 
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Processor } from "@nestjs/bullmq";
+import { Job } from "bullmq";
 
-import { QUEUES } from '@queues/queue-names';
-import { NOTIFICATION_QUEUE_JOBS, NOTIFICATION_CHANNELS } from '../notification.constants';
-import { NotificationJobPayload } from '../entities/notification.entity';
-import { NotificationHandlerFactory } from '../handlers/notification-handler.factory';
-import { EmailService } from '../services/email.service';
-import { PushService } from '../services/push.service';
+import { BaseWorker } from "@modules/messaging";
+import { QUEUES } from "@queues/queue-names";
+
+import { EmailService } from "../services/email.service";
+import { PushService } from "../services/push.service";
+
+import { NOTIFICATION_CHANNELS } from "../notification.constants";
+import { NotificationRegistry } from "../registry/notification.registry";
+import { NotificationJobPayload } from "../notification.interface";
+
+// ---------------------------------------------------------------------------
+// Self-registering imports
+// Importing each file triggers its NotificationRegistry.register() side effect.
+// Add one import line here when adding a new handler - nothing else changes.
+// ---------------------------------------------------------------------------
+import "../handlers/welcome-email.handler";
+import "../handlers/path-completed.handler";
+import "../handlers/admin-message.handler";
 
 /**
  * Worker that processes notification jobs from notification_queue.
  */
 @Processor(QUEUES.NOTIFICATION)
-export class NotificationProcessorWorker extends WorkerHost {
-    private readonly logger = new Logger(NotificationProcessorWorker.name);
-
+export class NotificationProcessorWorker extends BaseWorker<NotificationJobPayload> {
     constructor(
-        private readonly handlerFactory: NotificationHandlerFactory,
         private readonly emailService: EmailService,
         private readonly pushService: PushService,
     ) {
@@ -42,43 +50,33 @@ export class NotificationProcessorWorker extends WorkerHost {
 
     /**
      * Dispatches incoming jobs based on the job name.
+     * @param payload Unwrapped payload from BaseWorker.
      * @param job BullMQ job with name and payload
      */
-    async process(job: Job<NotificationJobPayload>): Promise<void> {
+    async handle(payload: NotificationJobPayload, job: Job): Promise<void> {
+        const handler = NotificationRegistry.get(job.name);
+        if (!handler) {
+            this.logger.warn(
+                `No handler registered for job.name="${job.name}" - skipping. ` +
+                    `Import the handler file in notification-processor.worker.ts.`,
+            );
+            return;
+        }
+
         this.logger.debug(
-            `[NotificationProcessorWorker] Processing job ${job.id} name=${job.name} type=${job.data.type} userId=${job.data.userId}`,
+            `Processing notification job=${job.id} name="${job.name}" userId=${payload.userId}`,
         );
 
-        switch (job.name) {
-            case NOTIFICATION_QUEUE_JOBS.SEND_NOTIFICATION:
-                await this.handleNotification(job.data);
-                break;
-
-            default:
-                this.logger.warn(
-                    `[NotificationProcessorWorker] Unknown job name "${job.name}" - skipping.`,
-                );
-        }
-    }
-
-    /**
-     * Process a notification job: get handler, format message, send via appropriate channels.
-     */
-    private async handleNotification(payload: NotificationJobPayload): Promise<void> {
         try {
-            // Get handler for this notification type
-            const handler = this.handlerFactory.getHandler(payload.type);
-
-            // Handler processes notification and returns formatted message
             const notification = await handler.handle(payload);
+
             if (!notification) {
                 this.logger.debug(
-                    `[NotificationProcessorWorker] Handler returned null - skipping notification for user ${payload.userId}`,
+                    `Handler returned null for job.name="${job.name}" userId=${payload.userId} - skipping send`,
                 );
                 return;
             }
 
-            // Send via appropriate channels
             if (
                 notification.channel === NOTIFICATION_CHANNELS.EMAIL ||
                 notification.channel === NOTIFICATION_CHANNELS.BOTH
@@ -102,15 +100,14 @@ export class NotificationProcessorWorker extends WorkerHost {
             }
 
             this.logger.debug(
-                `[NotificationProcessorWorker] Successfully sent ${notification.channel} notification for user ${payload.userId} (type: ${payload.type})`,
+                `Notification sent job.name="${job.name}" channel=${notification.channel} userId=${payload.userId}`,
             );
-        } catch (error) {
+        } catch (err) {
+            // Notifications are best-effort - log but do not rethrow.
+            // BullMQ will retry per DEFAULT_JOB_OPTIONS if needed.
             this.logger.error(
-                `[NotificationProcessorWorker] Error processing notification for user ${payload.userId}: ${error}`,
-                error instanceof Error ? error.stack : undefined,
+                `Notification failed job.name="${job.name}" userId=${payload.userId}: ${(err as Error).message}`,
             );
-            // Don't rethrow - let BullMQ handle retry logic
-            // Notifications are best-effort
         }
     }
 }

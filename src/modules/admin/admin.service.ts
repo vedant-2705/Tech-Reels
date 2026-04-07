@@ -17,8 +17,6 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 
 import { AdminRepository } from "./admin.repository";
 import { AuthSessionService } from "@modules/auth/auth-session.service";
@@ -68,14 +66,11 @@ import {
     CHALLENGE_TOKEN_REWARD,
     MAX_CHALLENGES_PER_REEL,
     ADMIN_MESSAGES,
-    ADMIN_NOTIFICATION_TYPE,
     REVOKE_SESSION_STATUSES,
     TOP_REELS_SORT,
     TOP_USERS_SORT,
     ANALYTICS_PERIOD,
 } from "./admin.constants";
-
-import { QUEUES } from "@queues/queue-names";
 
 import { AdminUserNotFoundException } from "./exceptions/admin-user-not-found.exception";
 import { CannotBanAdminException } from "./exceptions/cannot-ban-admin.exception";
@@ -84,6 +79,10 @@ import { AdminReelNotFoundException } from "./exceptions/admin-reel-not-found.ex
 import { AdminChallengeNotFoundException } from "./exceptions/admin-challenge-not-found.exception";
 import { MaxChallengesException } from "./exceptions/max-challenges.exception";
 import { AdminService } from "./admin.service.abstract";
+import { MessagingService } from "@modules/messaging";
+import { ADMIN_MANIFEST } from "./admin.messaging";
+import { AdminMessageJobPayload } from "@modules/notification/notification.interface";
+import { XpAwardJobPayload } from "@modules/gamification/gamification.interface";
 
 /**
  * Orchestrates all Admin workflows including user management, moderation,
@@ -96,16 +95,12 @@ export class AdminServiceImpl extends AdminService {
     /**
      * @param adminRepository Admin data-access layer.
      * @param authSessionService Cross-module service for session revocation.
-     * @param notificationQueue BullMQ queue for admin_message notifications.
-     * @param xpAwardQueue BullMQ queue for XP grant/revoke jobs.
+     * @param messagingService Messaging service for dispatching notification and XP award jobs.
      */
     constructor(
         private readonly adminRepository: AdminRepository,
         private readonly authSessionService: AuthSessionService,
-        @InjectQueue(QUEUES.NOTIFICATION)
-        private readonly notificationQueue: Queue,
-        @InjectQueue(QUEUES.XP_AWARD)
-        private readonly xpAwardQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {
         super();
     }
@@ -220,12 +215,16 @@ export class AdminServiceImpl extends AdminService {
             await this.authSessionService.incrementTokenVersion(userId);
         }
 
-        // Notify user (fire and forget)
-        void this.notificationQueue.add(QUEUES.NOTIFICATION, {
-            type: ADMIN_NOTIFICATION_TYPE,
+        const payload: AdminMessageJobPayload = {
             userId,
-            meta: { reason: dto.reason ?? null },
-        });
+            meta: {
+                ...(dto.reason && { reason: dto.reason }),
+            }
+        };
+        void this.messagingService.dispatchJob(
+            ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
+            payload,
+        )
 
         // Audit log (repository swallows failures internally)
         await this.adminRepository.insertAuditLog({
@@ -256,12 +255,16 @@ export class AdminServiceImpl extends AdminService {
         if (!user) throw new AdminUserNotFoundException();
 
         // Enqueue XP award - actual write is performed by the XP worker
-        void this.xpAwardQueue.add(QUEUES.XP_AWARD, {
+        const payload: XpAwardJobPayload = {
             userId,
             source: "admin_grant",
             xp_amount: dto.delta,
             note: dto.note,
-        });
+        };
+        void this.messagingService.dispatchJob(
+            ADMIN_MANIFEST.jobs.XP_AWARD.jobName,
+            payload,
+        );
 
         await this.adminRepository.insertAuditLog({
             adminId,
@@ -329,6 +332,7 @@ export class AdminServiceImpl extends AdminService {
         if (!report) throw new ReportNotFoundException();
 
         let newStatus: string;
+        let payload: AdminMessageJobPayload;
 
         switch (dto.action) {
             case REPORT_ACTION.DISMISS:
@@ -342,20 +346,30 @@ export class AdminServiceImpl extends AdminService {
                     ADMIN_REEL_STATUS.DISABLED,
                 );
                 await this.adminRepository.evictReelCache(report.reel_id);
-                void this.notificationQueue.add(QUEUES.NOTIFICATION, {
-                    type: ADMIN_NOTIFICATION_TYPE,
+                payload = {
                     userId: report.creator_id,
-                    meta: { note: dto.note ?? null },
-                });
+                    meta: {
+                        ...(dto.note && { note: dto.note }),
+                    }
+                };
+                void this.messagingService.dispatchJob(
+                    ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
+                    payload,
+                );
                 break;
 
             case REPORT_ACTION.WARN_CREATOR:
                 newStatus = REPORT_STATUS.ACTIONED;
-                void this.notificationQueue.add(QUEUES.NOTIFICATION, {
-                    type: ADMIN_NOTIFICATION_TYPE,
+                payload = {
                     userId: report.creator_id,
-                    meta: { note: dto.note ?? null },
-                });
+                    meta: {
+                        ...(dto.note && { note: dto.note }),
+                    }
+                };
+                void this.messagingService.dispatchJob(
+                    ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
+                    payload,
+                );
                 break;
 
             case REPORT_ACTION.ESCALATE:
@@ -420,11 +434,16 @@ export class AdminServiceImpl extends AdminService {
 
         // Notify creator only when disabling
         if (dto.status === ADMIN_REEL_STATUS.DISABLED) {
-            void this.notificationQueue.add(QUEUES.NOTIFICATION, {
-                type: ADMIN_NOTIFICATION_TYPE,
+            const payload: AdminMessageJobPayload = {
                 userId: reel.creator_id,
-                meta: { note: dto.note ?? null },
-            });
+                meta: {
+                    ...(dto.note && { note: dto.note }),
+                }
+            };
+            void this.messagingService.dispatchJob(
+                ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
+                payload,
+            );
         }
 
         await this.adminRepository.insertAuditLog({
