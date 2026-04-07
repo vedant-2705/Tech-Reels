@@ -5,7 +5,7 @@
  *
  * Note: NEW_USER shares the string "new_user" with AUTH_MANIFEST.NEW_USER
  * and targets the same queue (FEED_BUILD). The registry deduplicates safely
- * since the jobName string and queue are identical — no collision.
+ * since the jobName string and queue are identical - no collision.
  */
 
 import { ModuleMessagingManifest } from "@modules/messaging/messaging.types";

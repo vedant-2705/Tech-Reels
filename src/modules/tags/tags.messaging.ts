@@ -2,7 +2,7 @@
  * @module modules/tags/tags.messaging
  * @description
  * Messaging manifest for the Tags module.
- * Tags has no queue jobs — it only publishes one pub/sub event.
+ * Tags has no queue jobs - it only publishes one pub/sub event.
  *
  * Subscribers that react to tag updates import from here:
  *   import { TAGS_MANIFEST } from '@modules/tags/tags.messaging';

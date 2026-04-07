@@ -44,7 +44,7 @@ export class LeaderboardResetWorker
      */
     constructor(
         private readonly gamificationRepository: GamificationRepository,
-        // @InjectQueue kept intentionally — used for self-scheduling the
+        // @InjectQueue kept intentionally - used for self-scheduling the
         // repeatable weekly job, NOT for dispatching outbound jobs.
         @InjectQueue(QUEUES.LEADERBOARD_RESET)
         private readonly leaderboardResetQueue: Queue,

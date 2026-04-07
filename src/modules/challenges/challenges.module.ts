@@ -24,8 +24,10 @@ import { ChallengesService } from "./challenges.service.abstract";
 import { ChallengesServiceImpl } from "./challenges.service";
 import { ChallengesRepository } from "./challenges.repository";
 import { OptionsValidatorService } from "./services/options-validator.service";
+import { MessagingModule } from "@modules/messaging";
 
 @Module({
+    imports: [MessagingModule],
     controllers: [ChallengesController],
     providers: [
         { provide: ChallengesService, useClass: ChallengesServiceImpl },

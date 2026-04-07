@@ -3,9 +3,9 @@
  * @description
  * Messaging manifest for the Skill Paths module.
  *
- * NOTIFICATION job name is "path_completed" — matches SKILL_PATH_QUEUE_JOBS.NOTIFICATION
+ * NOTIFICATION job name is "path_completed" - matches SKILL_PATH_QUEUE_JOBS.NOTIFICATION
  * in skill-paths.constants.ts exactly. Previous generated code incorrectly used
- * "skill_path:notification" — this is the corrected value.
+ * "skill_path:notification" - this is the corrected value.
  *
  * XP_AWARD and BADGE_EVALUATION are namespaced ("skill_path:*") to avoid
  * registry collision with GAMIFICATION_MANIFEST canonical strings.

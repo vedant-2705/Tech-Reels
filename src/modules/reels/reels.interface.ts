@@ -11,7 +11,7 @@
  *   import { ReelWatchEndedEventPayload } from '@modules/reels/reels.interface';
  *
  * If Reels renames a field, every subscriber's import breaks at compile time.
- * That is the intended behaviour — refactors become visible immediately.
+ * That is the intended behaviour - refactors become visible immediately.
  */
 
 // ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ interface BaseUserEvent {
 // ---------------------------------------------------------------------------
 
 export interface ReelLikedEventPayload extends BaseUserReelEvent {
-    /** Tag IDs associated with the reel — used by affinity scoring. */
+    /** Tag IDs associated with the reel - used by affinity scoring. */
     tags: string[];
 }
 
@@ -46,7 +46,7 @@ export interface ReelSavedEventPayload extends BaseUserReelEvent {}
 export interface ReelUnsavedEventPayload extends BaseUserReelEvent {}
 
 export interface ReelSharedEventPayload extends BaseUserReelEvent {
-    /** Tag IDs — used by affinity scoring and feed personalisation. */
+    /** Tag IDs - used by affinity scoring and feed personalisation. */
     tags: string[];
 }
 
@@ -76,7 +76,7 @@ export interface FeedLowEventPayload extends BaseUserEvent {
 export interface ReelDeletedEventPayload extends BaseUserReelEvent {}
 
 export interface ReelStatusChangedEventPayload extends BaseReelEvent {
-    /** New status value — matches REEL_STATUS enum. */
+    /** New status value - matches REEL_STATUS enum. */
     status: string;
 }
 

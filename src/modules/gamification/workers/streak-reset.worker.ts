@@ -57,7 +57,7 @@ export class StreakResetWorker
      */
     constructor(
         private readonly gamificationService: GamificationService,
-        // @InjectQueue kept intentionally — used for self-scheduling the
+        // @InjectQueue kept intentionally - used for self-scheduling the
         // repeatable daily job, NOT for dispatching outbound jobs.
         @InjectQueue(QUEUES.STREAK_RESET)
         private readonly streakResetQueue: Queue,

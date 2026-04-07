@@ -24,8 +24,10 @@ import { SkillPathsService } from "./skill-paths.service.abstract";
 import { SkillPathsServiceImpl } from "./skill-paths.service";
 import { SkillPathsRepository } from "./skill-paths.repository";
 import { VideoTelemetrySubscriber } from "./subscribers/video-telemetry.subscriber";
+import { MessagingModule } from "@modules/messaging";
 
 @Module({
+    imports: [MessagingModule],
     controllers: [SkillPathsController],
     providers: [
         { provide: SkillPathsService, useClass: SkillPathsServiceImpl },

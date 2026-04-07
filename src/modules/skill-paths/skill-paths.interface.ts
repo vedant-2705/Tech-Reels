@@ -33,6 +33,6 @@ export interface PathCompletedEventPayload {
 export interface SkillPathNotificationJobPayload {
     userId: string;
     pathId: string;
-    /** Notification type — matches NOTIFICATION_TYPES in notification.constants.ts */
+    /** Notification type - matches NOTIFICATION_TYPES in notification.constants.ts */
     type: string;
 }

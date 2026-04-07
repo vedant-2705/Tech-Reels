@@ -2,10 +2,10 @@
  * @module modules/media/media.messaging
  * @description
  * Messaging manifest for the Media module.
- * Media has no queue jobs it dispatches — it consumes the video_processing_queue.
+ * Media has no queue jobs it dispatches - it consumes the video_processing_queue.
  * It publishes three events to content_events after MediaConvert webhook callbacks.
  *
- * REEL_CREATED is intentionally owned by Media (not Reels) — it is only safe
+ * REEL_CREATED is intentionally owned by Media (not Reels) - it is only safe
  * to publish after the reel status becomes `active` in the webhook handler.
  */
 

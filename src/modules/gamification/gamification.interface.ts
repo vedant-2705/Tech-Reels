@@ -10,7 +10,7 @@
  *
  * Cross-module usage:
  *   Challenges and SkillPaths both dispatch XP and badge jobs.
- *   They import these types from here — the consumer defines the contract,
+ *   They import these types from here - the consumer defines the contract,
  *   dispatchers must conform to it.
  *
  *   import { XpAwardJobPayload } from '@modules/gamification/gamification.interface';
@@ -42,7 +42,7 @@ export interface XpAwardJobPayload {
 export interface BadgeEvaluationJobPayload {
     userId: string;
     /**
-     * The triggering event string — drives which badge criteria are evaluated.
+     * The triggering event string - drives which badge criteria are evaluated.
      * e.g. 'challenge_correct', 'path_completed', 'REEL_WATCH_ENDED'
      * Use the relevant *_BADGE_EVENTS or GAMIFICATION_INBOUND_EVENTS constants.
      */
@@ -62,13 +62,13 @@ export interface UpdateUserStreakJobPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Scheduled job payloads (no input — cron-triggered)
+// Scheduled job payloads (no input - cron-triggered)
 // ---------------------------------------------------------------------------
 
-/** Weekly leaderboard reset — scheduled repeatable, no input needed. */
+/** Weekly leaderboard reset - scheduled repeatable, no input needed. */
 export type WeeklyLeaderboardResetJobPayload = Record<string, never>;
 
-/** Daily streak reset — scheduled repeatable, no input needed. */
+/** Daily streak reset - scheduled repeatable, no input needed. */
 export type DailyStreakResetJobPayload = Record<string, never>;
 
 // ---------------------------------------------------------------------------

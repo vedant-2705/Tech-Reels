@@ -13,6 +13,7 @@ import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service.abstract";
 import { UsersServiceImpl } from "./users.service";
 import { UsersRepository } from "./users.repository";
+import { MessagingModule } from "@modules/messaging";
 
 /**
  * Registers all users-module dependencies.
@@ -21,6 +22,7 @@ import { UsersRepository } from "./users.repository";
 @Module({
     imports: [
         AuthModule,
+        MessagingModule,
     ],
     controllers: [UsersController],
     providers: [

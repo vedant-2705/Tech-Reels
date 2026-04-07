@@ -25,10 +25,12 @@ import { ReelScorerService } from "./services/reel-scorer.service";
 import { FeedBuilderService } from "./services/feed-builder.service";
 import { TrendingReelsCron } from "./crons/trending-reels.cron";
 import { AffinityDecayCron } from "./crons/affinity-decay.cron";
+import { MessagingModule } from "@modules/messaging";
 
 @Module({
     imports: [
         ReelsModule,
+        MessagingModule,
     ],
     providers: [
         FeedRepository,

@@ -6,7 +6,7 @@
  * Gamification owns the canonical "xp_award" and "badge_evaluation" job
  * name strings. Challenges and SkillPaths use namespaced variants
  * ("challenges:xp_award", "skill_path:xp_award") that all target the
- * same physical queues — the XpAwardWorker handles all of them.
+ * same physical queues - the XpAwardWorker handles all of them.
  *
  * Inbound events this module SUBSCRIBES to (not declared here):
  *   REEL_WATCH_ENDED  <- import from REELS_MANIFEST

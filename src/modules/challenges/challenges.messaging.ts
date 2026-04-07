@@ -6,10 +6,10 @@
  * Job names are namespaced ("challenges:xp_award", "challenges:badge_evaluation")
  * to avoid registry key collision with GAMIFICATION_MANIFEST which owns the
  * canonical "xp_award" and "badge_evaluation" strings. Both target the same
- * physical queues — workers handle all variants via their switch cases.
+ * physical queues - workers handle all variants via their switch cases.
  *
  * Inbound events this module SUBSCRIBES to (not declared here): none currently.
- * The challenges service is invoked directly via HTTP — no pub/sub inbound.
+ * The challenges service is invoked directly via HTTP - no pub/sub inbound.
  */
 
 import { ModuleMessagingManifest } from "@modules/messaging/messaging.types";
