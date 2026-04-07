@@ -146,7 +146,7 @@ export class FeedInteractionsSubscriber extends BaseSubscriber {
      * before enqueuing a new one (circuit breaker - prevents job pile-up
      * when a user is actively scrolling and triggering multiple FEED_LOW events).
      *
-     * @param payload Parsed FEED_LOW payload containing userId.
+     * @param message AppMessage envelope containing FEED_LOW payload with userId and remaining feed count.
      * @returns void
      */
     private async handleFeedLow(message: AppMessage<unknown>): Promise<void> {
@@ -164,7 +164,7 @@ export class FeedInteractionsSubscriber extends BaseSubscriber {
             await this.messagingService.dispatchJob(
                 FEED_MANIFEST.jobs.FEED_LOW_REBUILD.jobName,
                 { userId, reason: FEED_JOB_REASONS.FEED_LOW },
-                { jobId: `feed_low:${userId}` }, // BullMQ dedup: ignored if already queued
+                { jobId: `feed_low-${userId}` }, // BullMQ dedup: ignored if already queued
             );
 
             this.logger.debug(
