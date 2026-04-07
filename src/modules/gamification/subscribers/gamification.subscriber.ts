@@ -13,15 +13,13 @@ import { Injectable } from "@nestjs/common";
 import { RedisService } from "@redis/redis.service";
 import { MessagingService } from "@modules/messaging/messaging.service";
 import { BaseSubscriber } from "@modules/messaging/base.subscriber";
-import {
-    AppMessage,
-    ReelWatchEndedEventPayload,
-    PathCompletedEventPayload,
-} from "@modules/messaging/messaging.interface";
+import { AppMessage } from "@modules/messaging/messaging.interface";
 import { REDIS_CHANNELS } from "@modules/messaging/messaging.constants";
 import { XP_SOURCE, REEL_WATCH_XP_REWARD } from "../gamification.constants";
 import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
 import { GAMIFICATION_MANIFEST } from "../gamification.messaging";
+import { ReelWatchEndedEventPayload } from "@modules/reels/reels.interface";
+import { PathCompletedEventPayload } from "@modules/skill-paths/skill-paths.interface";
 
 @Injectable()
 export class GamificationSubscriber extends BaseSubscriber {

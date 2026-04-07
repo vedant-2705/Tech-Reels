@@ -16,14 +16,11 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 import * as crypto from "crypto";
 
 import { ChallengesService } from "./challenges.service.abstract";
 import { ChallengesRepository } from "./challenges.repository";
 import { EvaluatorRegistry } from "./evaluators/evaluator.registry";
-import { RedisService } from "@redis/redis.service";
 
 import {
     ChallengeResponseDto,
@@ -42,9 +39,6 @@ import { REEL_STATUS } from "@modules/reels/reels.constants";
 
 import {
     CHALLENGES_BADGE_EVENTS,
-    CHALLENGES_EVENTS,
-    CHALLENGES_PUBSUB_CHANNEL,
-    CHALLENGES_QUEUE_JOBS,
     CHALLENGES_XP_SOURCE,
     CHALLENGE_TYPE,
     CHALLENGE_DEFAULT_TOKEN_REWARD,
@@ -53,7 +47,6 @@ import {
     CHALLENGE_MAX_PER_REEL,
 } from "./challenges.constants";
 
-import { QUEUES } from "@queues/queue-names";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 import {
     Challenge,
@@ -64,19 +57,9 @@ import { InvalidChallengePayloadException } from "./exceptions/invalid-challenge
 import { UpdateChallengeDto } from "./dto/update-challenge.dto";
 import { CreateChallengeDto } from "./dto/create-challenge.dto";
 import { OptionsValidatorService } from "./services/options-validator.service";
-
-/** Shape of the getMyAttempts response. */
-interface MyAttemptsResponse {
-    challenge_id: string;
-    attempts: {
-        id: string;
-        submitted_answer: string;
-        is_correct: boolean;
-        attempted_at: string;
-    }[];
-    is_locked: boolean;
-    attempts_used: number;
-}
+import { MessagingService } from "@modules/messaging";
+import { CHALLENGES_DISPATCH } from "./challenges.messaging";
+import { MyAttemptsResponse } from "./challenges.service.abstract";
 
 /**
  * Coordinates challenge reads, attempt submission, gamification side effects,
@@ -86,18 +69,13 @@ interface MyAttemptsResponse {
 export class ChallengesServiceImpl extends ChallengesService {
     /**
      * @param challengesRepository Challenge and attempt data-access + cache layer.
-     * @param redis                RedisService for pub/sub publishing.
-     * @param xpAwardQueue         BullMQ queue for async XP award jobs.
-     * @param badgeEvaluationQueue BullMQ queue for async badge evaluation jobs.
+     * @param optionsValidator     Validates challenge options based on type (e.g. MCQ must have options, code_fill must not).
+     * @param messagingService     Used to publish events and dispatch jobs for gamification side effects (XP, badges).
      */
     constructor(
         private readonly challengesRepository: ChallengesRepository,
-        private readonly redis: RedisService,
         private readonly optionsValidator: OptionsValidatorService,
-        @InjectQueue(QUEUES.XP_AWARD)
-        private readonly xpAwardQueue: Queue,
-        @InjectQueue(QUEUES.BADGE_EVALUATION)
-        private readonly badgeEvaluationQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {
         super();
     }
@@ -107,7 +85,7 @@ export class ChallengesServiceImpl extends ChallengesService {
     // -------------------------------------------------------------------------
 
     /**
-     * 
+     *
      * Accessible by admins and the reel's creator.
      *
      * Validations (service-layer):
@@ -312,7 +290,7 @@ export class ChallengesServiceImpl extends ChallengesService {
     // -------------------------------------------------------------------------
 
     /**
-     * 
+     *
      * Cache-aside:
      *   1. challenge list   -> getCachedChallengesByReel -> miss -> findByReelId -> set cache
      *   2. user reel status -> getCachedUserReelAttempts -> miss -> getUserAttempts -> set cache
@@ -519,35 +497,27 @@ export class ChallengesServiceImpl extends ChallengesService {
         );
 
         // Publish ATTEMPT_SUBMITTED (always, correct or not)
-        void this.redis.publish(
-            CHALLENGES_PUBSUB_CHANNEL,
-            JSON.stringify({
-                event: CHALLENGES_EVENTS.ATTEMPT_SUBMITTED,
-                userId,
-                challengeId,
-                is_correct,
-                difficulty: challenge.difficulty,
-                timestamp: new Date().toISOString(),
-            }),
-        );
+        void CHALLENGES_DISPATCH.attemptSubmitted(this.messagingService, {
+            userId,
+            challengeId,
+            is_correct,
+            difficulty: challenge.difficulty,
+        });
 
         // Async side effects - correct answers only
         if (is_correct) {
-            void this.xpAwardQueue.add(CHALLENGES_QUEUE_JOBS.XP_AWARD, {
+            void CHALLENGES_DISPATCH.xpAward(this.messagingService, {
                 userId,
                 source: CHALLENGES_XP_SOURCE.CHALLENGE_CORRECT,
                 xp_amount: xp_awarded,
                 reference_id: challengeId,
             });
 
-            void this.badgeEvaluationQueue.add(
-                CHALLENGES_QUEUE_JOBS.BADGE_EVALUATION,
-                {
-                    userId,
-                    event: CHALLENGES_BADGE_EVENTS.CHALLENGE_CORRECT,
-                    meta: { difficulty: challenge.difficulty },
-                },
-            );
+            void CHALLENGES_DISPATCH.badgeEvaluation(this.messagingService, {
+                userId,
+                event: CHALLENGES_BADGE_EVENTS.CHALLENGE_CORRECT,
+                meta: { difficulty: challenge.difficulty },
+            });
         }
 
         // Read denormalised total_xp (always returned, correct or not)
@@ -644,8 +614,6 @@ export class ChallengesServiceImpl extends ChallengesService {
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
-
-    
 
     /**
      * Computes a SHA-256 hex digest of the request body for idempotency

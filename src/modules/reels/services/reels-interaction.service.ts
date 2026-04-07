@@ -11,7 +11,6 @@
 import { Injectable } from "@nestjs/common";
 
 import { ReelsRepository } from "../reels.repository";
-import { RedisService } from "@redis/redis.service";
 
 import { WatchReelDto } from "../dto/watch-reel.dto";
 import { ReportReelDto } from "../dto/report-reel.dto";
@@ -23,15 +22,15 @@ import {
     REEL_META_FIELD,
     REEL_STATUS,
     REELS_MESSAGES,
-    REELS_MODULE_CONSTANTS,
 } from "../reels.constants";
-import { MessagingService, REELS } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { REELS_MANIFEST } from "../reels.messaging";
+import { ReelLikedEventPayload, ReelSavedEventPayload, ReelUnlikedEventPayload, ReelUnsavedEventPayload, ReelWatchEndedEventPayload } from "../reels.interface";
 
 @Injectable()
 export class ReelsInteractionService {
     constructor(
         private readonly reelsRepository: ReelsRepository,
-        private readonly redis: RedisService,
         private readonly messagingService: MessagingService,
     ) {}
 
@@ -53,13 +52,14 @@ export class ReelsInteractionService {
             );
         }
 
+        const payload: ReelLikedEventPayload = {
+            userId,
+            reelId,
+            tags: reel.tags.map((t) => t.id),
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.USER_INTERACTION.LIKED,
-            {
-                userId,
-                reelId,
-                tags: reel.tags.map((t) => t.id),
-            },
+            REELS_MANIFEST.events.REEL_LIKED.eventType,
+            payload,
         );
 
         return { liked: true };
@@ -83,12 +83,13 @@ export class ReelsInteractionService {
             );
         }
 
+        const payload: ReelUnlikedEventPayload = {
+            userId,
+            reelId,
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.USER_INTERACTION.UNLIKED,
-            {
-                userId,
-                reelId,
-            },
+            REELS_MANIFEST.events.REEL_UNLIKED.eventType,
+            payload,
         );
 
         return { liked: false };
@@ -111,12 +112,13 @@ export class ReelsInteractionService {
             );
         }
 
+        const payload: ReelSavedEventPayload = {
+            userId,
+            reelId,
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.USER_INTERACTION.SAVED,
-            {
-                userId,
-                reelId,
-            },
+            REELS_MANIFEST.events.REEL_SAVED.eventType,
+            payload,
         );
 
         return { saved: true };
@@ -139,12 +141,13 @@ export class ReelsInteractionService {
             );
         }
 
+        const payload: ReelUnsavedEventPayload = {
+            userId,
+            reelId,
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.USER_INTERACTION.UNSAVED,
-            {
-                userId,
-                reelId,
-            },
+            REELS_MANIFEST.events.REEL_UNSAVED.eventType,
+            payload,
         );
 
         return { saved: false };
@@ -164,14 +167,15 @@ export class ReelsInteractionService {
             return;
         }
 
+        const payload: ReelWatchEndedEventPayload = {
+            userId,
+            reelId,
+            watch_duration_secs: dto.watch_duration_secs,
+            completion_pct: dto.completion_pct,
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.VIDEO_TELEMETRY.WATCH_ENDED,
-            {
-                userId,
-                reelId,
-                watch_duration_secs: dto.watch_duration_secs,
-                completion_pct: dto.completion_pct,
-            },
+            REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType,
+            payload,
         );
     }
 

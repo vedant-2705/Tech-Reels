@@ -7,16 +7,8 @@
  * affinity handlers enqueue jobs rather than writing to DB directly.
  */
 
-import { Queue } from "bullmq";
 import { RedisService } from "@redis/redis.service";
-
-/**
- * Parsed pub/sub payload - every event must carry an event field.
- */
-export interface FeedEventPayload {
-    event: string;
-    [key: string]: unknown;
-}
+import { AppMessage, MessagingService } from "@modules/messaging";
 
 /**
  * Every Feed affinity event handler must implement this interface.
@@ -32,10 +24,10 @@ export interface IFeedEventHandler {
     /**
      * Handle the incoming pub/sub event.
      *
-     * @param payload Parsed event payload.
+     * @param message The incoming message.
      * @returns void
      */
-    handle(payload: FeedEventPayload): Promise<void>;
+    handle(message: AppMessage<unknown>): Promise<void>;
 }
 
 /**
@@ -48,5 +40,5 @@ export interface IFeedEventHandler {
  */
 export type FeedEventHandlerConstructor = new (
     redis: RedisService,
-    affinityQueue: Queue,
+    messagingService: MessagingService,
 ) => IFeedEventHandler;

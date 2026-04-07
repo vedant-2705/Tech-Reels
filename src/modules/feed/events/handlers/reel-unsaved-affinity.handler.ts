@@ -10,24 +10,17 @@
  */
 
 import { Logger } from "@nestjs/common";
-import { Queue } from "bullmq";
 
 import { RedisService } from "@redis/redis.service";
-import { QUEUES } from "@queues/queue-names";
 
-import {
-    IFeedEventHandler,
-    FeedEventPayload,
-} from "./ifeed-event-handler.interface";
+import { IFeedEventHandler } from "./ifeed-event-handler.interface";
 import { FeedEventRegistry } from "../registry/feed-event.registry";
 import { FEED_MODULE_CONSTANTS } from "../../feed.constants";
-
-/** Typed payload for REEL_UNSAVED events. */
-interface ReelUnsavedPayload extends FeedEventPayload {
-    userId: string;
-    reelId: string;
-    timestamp: string;
-}
+import { AppMessage, MessagingService } from "@modules/messaging";
+import { ReelUnsavedEventPayload } from "@modules/reels/reels.interface";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { AffinityUpdateJobPayload } from "@modules/feed/feed.interface";
+import { FEED_MANIFEST } from "@modules/feed/feed.messaging";
 
 /**
  * Handles REEL_UNSAVED pub/sub events for affinity updates.
@@ -35,35 +28,40 @@ interface ReelUnsavedPayload extends FeedEventPayload {
  */
 export class ReelUnsavedAffinityHandler implements IFeedEventHandler {
     readonly channel = FEED_MODULE_CONSTANTS.USER_INTERACTIONS;
-    readonly event = FEED_MODULE_CONSTANTS.REEL_UNSAVED;
+    readonly event = REELS_MANIFEST.events.REEL_UNSAVED.eventType;
 
     private readonly logger = new Logger(ReelUnsavedAffinityHandler.name);
 
     /**
      * @param _redis Reserved for future Redis-side operations.
-     * @param affinityQueue AFFINITY_UPDATE BullMQ queue for job enqueue.
+     * @param messagingService Service for dispatching messages.
      */
     constructor(
         private readonly _redis: RedisService,
-        private readonly affinityQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
      * Handle REEL_UNSAVED - enqueue affinity update job.
      * No completion_pct field - worker applies flat UNSAVE delta (-1.5).
      *
-     * @param payload Parsed REEL_UNSAVED payload.
+     * @param message The incoming message.
      * @returns void
      */
-    async handle(payload: FeedEventPayload): Promise<void> {
-        const { userId, reelId } = payload as ReelUnsavedPayload;
+    async handle(message: AppMessage<unknown>): Promise<void> {
+        const { userId, reelId } = message.payload as ReelUnsavedEventPayload;
+
+        const payload: AffinityUpdateJobPayload = {
+            userId,
+            reelId,
+            eventType: REELS_MANIFEST.events.REEL_UNSAVED.eventType,
+        };
 
         try {
-            await this.affinityQueue.add(QUEUES.AFFINITY_UPDATE, {
-                userId,
-                reelId,
-                eventType: FEED_MODULE_CONSTANTS.REEL_UNSAVED,
-            });
+            void this.messagingService.dispatchJob(
+                FEED_MANIFEST.jobs.AFFINITY_UPDATE.jobName,
+                payload,
+            );
         } catch (err) {
             this.logger.error(
                 `Failed to enqueue AFFINITY_UPDATE for REEL_UNSAVED userId=${userId} reelId=${reelId}: ${(err as Error).message}`,
@@ -77,6 +75,6 @@ export class ReelUnsavedAffinityHandler implements IFeedEventHandler {
 // ---------------------------------------------------------------------------
 FeedEventRegistry.register(
     FEED_MODULE_CONSTANTS.USER_INTERACTIONS,
-    FEED_MODULE_CONSTANTS.REEL_UNSAVED,
+    REELS_MANIFEST.events.REEL_UNSAVED.eventType,
     ReelUnsavedAffinityHandler,
 );

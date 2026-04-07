@@ -124,32 +124,6 @@ export interface AwardedBadgePayload {
 }
 
 // ---------------------------------------------------------------------------
-// Queue job payloads (inbound - consumed by workers)
-// ---------------------------------------------------------------------------
-
-/**
- * Payload shape for jobs on xp_award_queue.
- * Matches the shape documented in Foundation doc Section 13.
- */
-export interface XpAwardJobPayload {
-    userId: string;
-    source: string;
-    xp_amount: number;
-    reference_id?: string;
-    note?: string;
-}
-
-/**
- * Payload shape for jobs on badge_evaluation_queue.
- * Matches the shape documented in Foundation doc Section 13.
- */
-export interface BadgeEvaluationJobPayload {
-    userId: string;
-    event: string;
-    meta: Record<string, unknown>;
-}
-
-// ---------------------------------------------------------------------------
 // Criteria evaluation context
 // ---------------------------------------------------------------------------
 

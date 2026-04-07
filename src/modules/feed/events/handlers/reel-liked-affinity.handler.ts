@@ -10,24 +10,17 @@
  */
 
 import { Logger } from "@nestjs/common";
-import { Queue } from "bullmq";
 
 import { RedisService } from "@redis/redis.service";
-import { QUEUES } from "@queues/queue-names";
 
-import {
-    IFeedEventHandler,
-    FeedEventPayload,
-} from "./ifeed-event-handler.interface";
+import { IFeedEventHandler } from "./ifeed-event-handler.interface";
 import { FeedEventRegistry } from "../registry/feed-event.registry";
 import { FEED_MODULE_CONSTANTS } from "../../feed.constants";
-
-/** Typed payload for REEL_LIKED events. */
-interface ReelLikedPayload extends FeedEventPayload {
-    userId: string;
-    reelId: string;
-    timestamp: string;
-}
+import { AppMessage, MessagingService } from "@modules/messaging";
+import { ReelLikedEventPayload } from "@modules/reels/reels.interface";
+import { AffinityUpdateJobPayload } from "@modules/feed/feed.interface";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { FEED_MANIFEST } from "@modules/feed/feed.messaging";
 
 /**
  * Handles REEL_LIKED pub/sub events for affinity updates.
@@ -35,35 +28,40 @@ interface ReelLikedPayload extends FeedEventPayload {
  */
 export class ReelLikedAffinityHandler implements IFeedEventHandler {
     readonly channel = FEED_MODULE_CONSTANTS.USER_INTERACTIONS;
-    readonly event = FEED_MODULE_CONSTANTS.REEL_LIKED;
+    readonly event = REELS_MANIFEST.events.REEL_LIKED.eventType;
 
     private readonly logger = new Logger(ReelLikedAffinityHandler.name);
 
     /**
      * @param _redis Reserved for future Redis-side operations.
-     * @param affinityQueue AFFINITY_UPDATE BullMQ queue for job enqueue.
+     * @param messagingService Service for dispatching messages.
      */
     constructor(
         private readonly _redis: RedisService,
-        private readonly affinityQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
      * Handle REEL_LIKED - enqueue affinity update job.
      * No completion_pct field - worker applies flat LIKE delta (+1.0).
      *
-     * @param payload Parsed REEL_LIKED payload.
+     * @param message The incoming message.
      * @returns void
      */
-    async handle(payload: FeedEventPayload): Promise<void> {
-        const { userId, reelId } = payload as ReelLikedPayload;
+    async handle(message: AppMessage<unknown>): Promise<void> {
+        const { userId, reelId } = message.payload as ReelLikedEventPayload;
+
+        const payload: AffinityUpdateJobPayload = {
+            userId,
+            reelId,
+            eventType: REELS_MANIFEST.events.REEL_LIKED.eventType,
+        };
 
         try {
-            await this.affinityQueue.add(QUEUES.AFFINITY_UPDATE, {
-                userId,
-                reelId,
-                eventType: FEED_MODULE_CONSTANTS.REEL_LIKED,
-            });
+            void this.messagingService.dispatchJob(
+                FEED_MANIFEST.jobs.AFFINITY_UPDATE.jobName,
+                payload,
+            );
         } catch (err) {
             this.logger.error(
                 `Failed to enqueue AFFINITY_UPDATE for REEL_LIKED userId=${userId} reelId=${reelId}: ${(err as Error).message}`,
@@ -77,6 +75,6 @@ export class ReelLikedAffinityHandler implements IFeedEventHandler {
 // ---------------------------------------------------------------------------
 FeedEventRegistry.register(
     FEED_MODULE_CONSTANTS.USER_INTERACTIONS,
-    FEED_MODULE_CONSTANTS.REEL_LIKED,
+    REELS_MANIFEST.events.REEL_LIKED.eventType,
     ReelLikedAffinityHandler,
 );

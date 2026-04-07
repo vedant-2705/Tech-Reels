@@ -25,7 +25,9 @@ import {
     TAGS_ALL_KEY,
     TAGS_CATEGORY_PREFIX,
 } from "@common/constants/redis-keys.constants";
-import { MessagingService, REELS } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { REELS_MANIFEST } from "../reels.messaging";
+import { ReelStatusChangedEventPayload } from "../reels.interface";
 
 @Injectable()
 export class ReelsAdminService {
@@ -73,12 +75,13 @@ export class ReelsAdminService {
             await this.invalidateTagsCache();
         }
 
+        const payload: ReelStatusChangedEventPayload = {
+            reelId,
+            status: dto.status,
+        };
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.REEL_STATUS_CHANGED,
-            {
-                reelId,
-                status: dto.status,
-            },
+            REELS_MANIFEST.events.REEL_STATUS_CHANGED.eventType,
+            payload,
         );
 
         return {

@@ -28,10 +28,12 @@ export const REELS_MANIFEST = {
         FEED_COLD_START: {
             jobName: "cold_start",
             queue: QUEUES.FEED_BUILD,
+            reason: "No reels in feed, triggering cold start",
         },
         FEED_SEARCH: {
             jobName: "search",
             queue: QUEUES.FEED_BUILD,
+            reason: "User performed a search",
         },
         FEED_SHARE: {
             jobName: "share",

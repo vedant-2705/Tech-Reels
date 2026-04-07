@@ -19,12 +19,13 @@ import { ModuleMessagingManifest } from "./messaging.types";
 // ---------------------------------------------------------------------------
 // Module manifest imports
 // One import per module that publishes jobs or events.
-// Pure subscribers (Feed) are not listed here — they have no manifest.
+// Pure subscribers (Feed) are not listed here - they have no manifest.
 // ---------------------------------------------------------------------------
 
 import { AUTH_MANIFEST } from "@modules/auth/auth.messaging";
 import { USERS_MANIFEST } from "@modules/users/users.messaging";
 import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { FEED_MANIFEST } from "@modules/feed/feed.messaging";
 import { GAMIFICATION_MANIFEST } from "@modules/gamification/gamification.messaging";
 import { CHALLENGES_MANIFEST } from "@modules/challenges/challenges.messaging";
 import { SKILL_PATHS_MANIFEST } from "@modules/skill-paths/skill-paths.messaging";
@@ -39,7 +40,7 @@ import { ADMIN_MANIFEST } from "@modules/admin/admin.messaging";
 
 /**
  * Merges all manifest job entries into a flat jobName -> queueName map.
- * Throws on duplicate job name strings targeting different queues —
+ * Throws on duplicate job name strings targeting different queues -
  * that is a routing ambiguity that must be resolved at the manifest level.
  */
 function buildJobRegistry(
@@ -54,7 +55,7 @@ function buildJobRegistry(
             const existing = registry[entry.jobName];
             if (existing && existing !== entry.queue) {
                 throw new Error(
-                    `MessagingRegistry: Job name collision — ` +
+                    `MessagingRegistry: Job name collision - ` +
                         `"${entry.jobName}" is registered to both ` +
                         `"${existing}" and "${entry.queue}". ` +
                         `Use a namespaced job name to disambiguate (e.g. "module:job_name").`,
@@ -83,7 +84,7 @@ function buildEventRegistry(
             const existing = registry[entry.eventType];
             if (existing && existing !== entry.channel) {
                 throw new Error(
-                    `MessagingRegistry: Event type collision — ` +
+                    `MessagingRegistry: Event type collision - ` +
                         `"${entry.eventType}" is registered to both ` +
                         `"${existing}" and "${entry.channel}". ` +
                         `Each event type string must map to exactly one channel.`,
@@ -105,6 +106,7 @@ const ALL_MANIFESTS: ModuleMessagingManifest[] = [
     AUTH_MANIFEST,
     USERS_MANIFEST,
     REELS_MANIFEST,
+    FEED_MANIFEST,
     GAMIFICATION_MANIFEST,
     CHALLENGES_MANIFEST,
     SKILL_PATHS_MANIFEST,

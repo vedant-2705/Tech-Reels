@@ -12,10 +12,10 @@
 import { Processor } from "@nestjs/bullmq";
 import { Job } from "bullmq";
 import { GamificationService } from "../gamification.service.abstract";
-import { XpAwardJobPayload } from "../entities/gamification.entity";
 import { QUEUES } from "@queues/queue-names";
 import { BaseWorker } from "@modules/messaging/base.worker";
-import { GAMIFICATION_QUEUE_JOBS } from "@modules/messaging";
+import { XpAwardJobPayload } from "../gamification.interface";
+import { GAMIFICATION_MANIFEST } from "../gamification.messaging";
 
 /**
  * Worker that processes XP award jobs from xp_award_queue.
@@ -39,7 +39,7 @@ export class XpAwardWorker extends BaseWorker<XpAwardJobPayload> {
         );
  
         switch (job.name) {
-            case GAMIFICATION_QUEUE_JOBS.XP_AWARD:
+            case GAMIFICATION_MANIFEST.jobs.XP_AWARD.jobName:
                 await this.gamificationService.awardXp(payload);
                 break;
  

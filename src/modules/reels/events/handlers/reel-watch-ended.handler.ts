@@ -30,7 +30,9 @@ import {
     REELS_MODULE_CONSTANTS,
     REELS_REDIS_KEYS,
 } from "../../reels.constants";
-import { AppMessage, REELS, type ReelWatchEndedEventPayload } from "@modules/messaging";
+import { AppMessage } from "@modules/messaging";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { ReelWatchEndedEventPayload } from "@modules/reels/reels.interface";
 
 
 
@@ -40,7 +42,7 @@ import { AppMessage, REELS, type ReelWatchEndedEventPayload } from "@modules/mes
  */
 export class ReelWatchEndedHandler implements IReelEventHandler {
     readonly channel = REELS_MODULE_CONSTANTS.VIDEO_TELEMETRY;
-    readonly event = REELS.EVENTS.VIDEO_TELEMETRY.WATCH_ENDED;
+    readonly event = REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType;
 
     private readonly logger = new Logger(ReelWatchEndedHandler.name);
 
@@ -121,6 +123,6 @@ export class ReelWatchEndedHandler implements IReelEventHandler {
 // ---------------------------------------------------------------------------
 ReelEventRegistry.register(
     REELS_MODULE_CONSTANTS.VIDEO_TELEMETRY,
-    REELS.EVENTS.VIDEO_TELEMETRY.WATCH_ENDED,
+    REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType,
     ReelWatchEndedHandler,
 );

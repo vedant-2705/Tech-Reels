@@ -12,10 +12,9 @@
  */
 
 import {
-    XpAwardJobPayload,
-    BadgeEvaluationJobPayload,
     AwardedBadgePayload,
 } from "./entities/gamification.entity";
+import { BadgeEvaluationJobPayload, XpAwardJobPayload } from "./gamification.interface";
 
 export abstract class GamificationService {
     /**

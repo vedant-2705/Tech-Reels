@@ -33,18 +33,22 @@ import { SessionExpiredException } from "@modules/auth/exceptions/session-expire
 import { TokenReuseException } from "@modules/auth/exceptions/token-reuse.exception";
 import { InvalidProviderException } from "@modules/auth/exceptions/invalid-provider.exception";
 
-import {
-    compareHash,
-    DUMMY_HASH,
-    hashValue,
-} from "@common/utils/hash.util";
+import { compareHash, DUMMY_HASH, hashValue } from "@common/utils/hash.util";
 import {
     AUTH_BCRYPT_ROUNDS,
     AUTH_MESSAGES,
     AUTH_OAUTH,
 } from "./auth.constants";
 import { USERS_ACCOUNT_STATUS } from "@common/constants/shared.constants";
-import { AUTH, MessagingService } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { AUTH_MANIFEST } from "./auth.messaging";
+import {
+    NewUserJobPayload,
+    UserLoggedInEventPayload,
+    UserLoggedOutEventPayload,
+    UserRegisteredEventPayload,
+    WelcomeEmailJobPayload,
+} from "./auth.interface";
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
@@ -58,18 +62,14 @@ export class AuthServiceImpl extends AuthService {
      * @param oauthService OAuth integration service.
      * @param tokenService JWT token lifecycle service.
      * @param usernameGeneratorService Username generation service.
-     * @param jwtService JWT signing and verification service.
-     * @param config Runtime configuration provider.
-     * @param redis Redis pub/sub client.
-     * @param notificationQueue Queue for notification jobs.
-     * @param feedBuildQueue Queue for feed bootstrap jobs.
+     * @param messagingService Service for dispatching events and jobs.
      */
     constructor(
         private readonly authRepository: AuthRepository,
         private readonly oauthService: OAuthService,
         private readonly tokenService: TokenService,
         private readonly usernameGeneratorService: UsernameGeneratorService,
-       private readonly messagingService: MessagingService,
+        private readonly messagingService: MessagingService,
     ) {
         super();
     }
@@ -111,21 +111,27 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 7. Async side effects - fire and forget (don't await, don't block response)
+        const userRegisteredPayload: UserRegisteredEventPayload = {
+            userId: user.id,
+        };
         void this.messagingService.dispatchEvent(
-            AUTH.EVENTS.USER_REGISTERED,
-            { userId: user.id },
+            AUTH_MANIFEST.events.USER_REGISTERED.eventType,
+            userRegisteredPayload,
         );
 
+        const welcomeEmailPayload: WelcomeEmailJobPayload = { userId: user.id };
         void this.messagingService.dispatchJob(
-            AUTH.QUEUE_JOBS.WELCOME_EMAIL, 
-            { userId: user.id }
+            AUTH_MANIFEST.jobs.WELCOME_EMAIL.jobName,
+            welcomeEmailPayload,
         );
+
+        const newUserPayload: NewUserJobPayload = {
+            userId: user.id,
+            reason: AUTH_MANIFEST.jobs.NEW_USER.reason,
+        };
         void this.messagingService.dispatchJob(
-            AUTH.QUEUE_JOBS.NEW_USER, 
-            { 
-                userId: user.id,
-                reason: AUTH.QUEUE_JOBS.NEW_USER,
-            }
+            AUTH_MANIFEST.jobs.NEW_USER.jobName,
+            newUserPayload,
         );
 
         // 8. Return response
@@ -184,9 +190,10 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 7. Publish login event to Pub/Sub
+        const payload: UserLoggedInEventPayload = { userId: user.id };
         void this.messagingService.dispatchEvent(
-            AUTH.EVENTS.USER_LOGGED_IN,
-            { userId: user.id },
+            AUTH_MANIFEST.events.USER_LOGGED_IN.eventType,
+            payload,
         );
 
         // 8. Return response
@@ -255,9 +262,10 @@ export class AuthServiceImpl extends AuthService {
                 needsOnboarding = true;
 
                 // Async side effects for new users
+                const payload: WelcomeEmailJobPayload = { userId: user.id };
                 void this.messagingService.dispatchJob(
-                    AUTH.QUEUE_JOBS.WELCOME_EMAIL,
-                    { userId: user.id }
+                    AUTH_MANIFEST.jobs.WELCOME_EMAIL.jobName,
+                    payload,
                 );
             }
         }
@@ -273,9 +281,10 @@ export class AuthServiceImpl extends AuthService {
         const tokens = await this.tokenService.generatePair(user);
 
         // 8. Publish login event
+        const payload: UserLoggedInEventPayload = { userId: user.id };
         void this.messagingService.dispatchEvent(
-            AUTH.EVENTS.USER_LOGGED_IN,
-            { userId: user.id },
+            AUTH_MANIFEST.events.USER_LOGGED_IN.eventType,
+            payload,
         );
 
         // 9. Return response with needs_onboarding flag
@@ -362,9 +371,11 @@ export class AuthServiceImpl extends AuthService {
         // Idempotent - no error if token family doesn't exist
         await this.authRepository.deleteRefreshToken(userId, tokenFamily);
 
+        const payload: UserLoggedOutEventPayload = { userId };
+
         void this.messagingService.dispatchEvent(
-            AUTH.EVENTS.USER_LOGGED_OUT,
-            { userId },
+            AUTH_MANIFEST.events.USER_LOGGED_OUT.eventType,
+            payload,
         );
 
         return { message: AUTH_MESSAGES.LOGGED_OUT };

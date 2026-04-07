@@ -18,8 +18,8 @@
  * Payload:  {} (no payload needed)
  */
 
-import { Processor, WorkerHost, InjectQueue } from "@nestjs/bullmq";
-import { Logger, OnModuleInit } from "@nestjs/common";
+import { Processor, InjectQueue } from "@nestjs/bullmq";
+import { OnModuleInit } from "@nestjs/common";
 import { Job, Queue } from "bullmq";
 import { GamificationRepository } from "../gamification.repository";
 import { QUEUES } from "@queues/queue-names";
@@ -27,20 +27,25 @@ import {
     GAMIFICATION_LEADERBOARD_JOBS,
     LEADERBOARD_RESET_CRON,
 } from "../gamification.constants";
+import { BaseWorker } from "@modules/messaging";
+import { WeeklyLeaderboardResetJobPayload } from "../gamification.interface";
 
 /**
  * Worker that processes the weekly leaderboard reset repeatable job.
  */
 @Processor(QUEUES.LEADERBOARD_RESET)
-export class LeaderboardResetWorker extends WorkerHost implements OnModuleInit {
-    private readonly logger = new Logger(LeaderboardResetWorker.name);
-
+export class LeaderboardResetWorker
+    extends BaseWorker<WeeklyLeaderboardResetJobPayload>
+    implements OnModuleInit
+{
     /**
      * @param gamificationRepository Repository with resetWeeklyLeaderboard method.
      * @param leaderboardResetQueue  Injected queue to schedule the repeatable job.
      */
     constructor(
         private readonly gamificationRepository: GamificationRepository,
+        // @InjectQueue kept intentionally — used for self-scheduling the
+        // repeatable weekly job, NOT for dispatching outbound jobs.
         @InjectQueue(QUEUES.LEADERBOARD_RESET)
         private readonly leaderboardResetQueue: Queue,
     ) {
@@ -66,7 +71,7 @@ export class LeaderboardResetWorker extends WorkerHost implements OnModuleInit {
         );
 
         this.logger.log(
-            `[LeaderboardResetWorker] Repeatable job scheduled: ${LEADERBOARD_RESET_CRON} UTC (every Monday)`,
+            `Repeatable job scheduled: ${LEADERBOARD_RESET_CRON} UTC (every Monday)`,
         );
     }
 
@@ -76,15 +81,13 @@ export class LeaderboardResetWorker extends WorkerHost implements OnModuleInit {
      *
      * @param job BullMQ repeatable job (payload is empty).
      */
-    async process(job: Job): Promise<void> {
-        this.logger.log(
-            `[LeaderboardResetWorker] Starting weekly leaderboard reset job ${job.id}`,
-        );
+    async handle(_payload: Record<string, never>, job: Job): Promise<void> {
+        this.logger.log(`Starting weekly leaderboard reset job ${job.id}`);
 
         await this.gamificationRepository.resetWeeklyLeaderboard();
 
         this.logger.log(
-            "[LeaderboardResetWorker] Weekly leaderboard reset complete. All leaderboard:weekly:* keys deleted.",
+            "Weekly leaderboard reset complete. All leaderboard:weekly:* keys deleted.",
         );
     }
 }

@@ -15,6 +15,12 @@
 import { ModuleMessagingManifest } from "@modules/messaging/messaging.types";
 import { REDIS_CHANNELS } from "@modules/messaging/messaging.constants";
 import { QUEUES } from "src/queues/queue-names";
+import { MessagingService } from "@modules/messaging";
+import {
+    ChallengesAttemptSubmittedEventPayload,
+    ChallengesBadgeEvaluationJobPayload,
+    ChallengesXpAwardJobPayload,
+} from "./challenges.interface";
 
 export const CHALLENGES_MANIFEST = {
     jobs: {
@@ -34,3 +40,31 @@ export const CHALLENGES_MANIFEST = {
         },
     },
 } as const satisfies ModuleMessagingManifest;
+
+export const CHALLENGES_DISPATCH = {
+    badgeEvaluation: (
+        messaging: MessagingService,
+        payload: ChallengesBadgeEvaluationJobPayload,
+    ) =>
+        messaging.dispatchJob(
+            CHALLENGES_MANIFEST.jobs.BADGE_EVALUATION.jobName,
+            payload,
+        ),
+
+    xpAward: (
+        messaging: MessagingService,
+        payload: ChallengesXpAwardJobPayload,
+    ) =>
+        messaging.dispatchJob(
+            CHALLENGES_MANIFEST.jobs.XP_AWARD.jobName,
+            payload,
+        ),
+    attemptSubmitted: (
+        messaging: MessagingService,
+        payload: ChallengesAttemptSubmittedEventPayload,
+    ) =>
+        messaging.dispatchEvent(
+            CHALLENGES_MANIFEST.events.ATTEMPT_SUBMITTED.eventType,
+            payload,
+        ),
+} as const;

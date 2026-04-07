@@ -48,8 +48,6 @@ import { compareHash } from "@common/utils/hash.util";
 import {
     USERS_ACCOUNT_STATUSES,
     USERS_MESSAGES,
-    USERS_MODULE_CONSTANTS,
-    USERS_QUEUE_JOBS,
     USERS_REDIS_KEYS,
 } from "./users.constants";
 import {
@@ -63,7 +61,9 @@ import { buildAvatarKey } from "./utils/build-avatar-key.util";
 import { ConfigService } from "@nestjs/config";
 import { LeaderboardResponseDto } from "./dto/leaderboard-response.dto";
 import { MessagingService } from "@modules/messaging";
-import { USERS } from "@modules/messaging";
+import { USERS_MANIFEST } from "./users.messaging";
+import { FeedBuildForNewUserJobPayload, FeedRebuildJobPayload } from "@modules/feed/feed.interface";
+import { UserAccountDeactivatedEventPayload } from "./users.interface";
 
 /**
  * Coordinates all user profile use cases, side effects, and cross-module
@@ -76,7 +76,8 @@ export class UsersServiceImpl extends UsersService {
      * @param authSessionService Exported auth service for session lifecycle ops.
      * @param s3Service AWS S3 service for presigned URL generation.
      * @param redis Redis client for pub/sub and cache operations.
-     * @param feedBuildQueue BullMQ queue for feed rebuild jobs.
+     * @param messagingService Abstracted messaging service for dispatching events and jobs.
+     * @param config Config service for environment variables and constants access.
      */
     constructor(
         private readonly usersRepository: UsersRepository,
@@ -172,10 +173,15 @@ export class UsersServiceImpl extends UsersService {
             await this.redis.del(
                 `${USERS_REDIS_KEYS.FEED_QUEUE_PREFIX}:${userId}`,
             );
-            void this.messagingService.dispatchJob(USERS.QUEUE_JOBS.REBUILD, {
+
+            const payload: FeedRebuildJobPayload = {
                 userId,
-                reason: USERS.QUEUE_JOBS.REBUILD,
-            });
+                reason: USERS_MANIFEST.jobs.REBUILD_FEED.reason,
+            };
+            void this.messagingService.dispatchJob(
+                USERS_MANIFEST.jobs.REBUILD_FEED.jobName,
+                payload,
+            );
         }
 
         return {
@@ -217,10 +223,14 @@ export class UsersServiceImpl extends UsersService {
         await this.usersRepository.seedTopicAffinity(userId, dto.topics, 1.0);
 
         // Enqueue feed build - fire and forget
-        void this.messagingService.dispatchJob(USERS.QUEUE_JOBS.NEW_USER, {
+        const payload: FeedBuildForNewUserJobPayload = {
             userId,
-            reason: USERS.QUEUE_JOBS.NEW_USER,
-        });
+            reason: USERS_MANIFEST.jobs.NEW_USER.reason,
+        };
+        void this.messagingService.dispatchJob(
+            USERS_MANIFEST.jobs.NEW_USER.jobName,
+            payload,
+        );
 
         return {
             message: USERS_MESSAGES.ONBOARDING_COMPLETE,
@@ -341,20 +351,11 @@ export class UsersServiceImpl extends UsersService {
         await this.authSessionService.revokeAllSessions(userId);
         await this.authSessionService.incrementTokenVersion(userId);
 
-        // Publish ACCOUNT_DEACTIVATED to transactional Pub/Sub channel
-        // void this.redis.publish(
-        //     USERS_MODULE_CONSTANTS.TRANSACTIONAL_CHANNEL,
-        //     JSON.stringify({
-        //         event: USERS_MODULE_CONSTANTS.ACCOUNT_DEACTIVATED,
-        //         userId,
-        //         timestamp: new Date().toISOString(),
-        //     }),
-        // );
-
+        const payload: UserAccountDeactivatedEventPayload = { userId };
         void this.messagingService.dispatchEvent(
-            USERS_MODULE_CONSTANTS.ACCOUNT_DEACTIVATED,
-            { userId }
-        )
+            USERS_MANIFEST.events.ACCOUNT_DEACTIVATED.eventType,
+           payload,
+        );
 
         return { message: USERS_MESSAGES.ACCOUNT_DEACTIVATED };
     }
@@ -462,7 +463,8 @@ export class UsersServiceImpl extends UsersService {
             challenges_correct: challengeStats.total_correct,
             accuracy_rate: challengeStats.accuracy_rate,
             paths_completed,
-            leaderboard_rank: leaderboard_rank !== null ? leaderboard_rank + 1 : null, // convert 0-based to 1-based rank
+            leaderboard_rank:
+                leaderboard_rank !== null ? leaderboard_rank + 1 : null, // convert 0-based to 1-based rank
         };
     }
 

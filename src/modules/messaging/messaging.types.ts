@@ -23,6 +23,8 @@ export interface JobManifestEntry {
     readonly jobName: string;
     /** Physical queue name from QUEUES in src/queues/queue-names.ts. */
     readonly queue: string;
+    /** Description of the job's purpose. */
+    readonly reason?: string;
 }
 
 /**

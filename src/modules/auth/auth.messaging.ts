@@ -22,6 +22,7 @@ export const AUTH_MANIFEST = {
         NEW_USER: {
             jobName: "new_user",
             queue: QUEUES.FEED_BUILD,
+            reason: "New user registered",
         },
     },
     events: {

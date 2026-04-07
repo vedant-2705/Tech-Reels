@@ -25,7 +25,9 @@ import {
     REEL_STATUS,
     REELS_REDIS_KEYS,
 } from "../reels.constants";
-import { MessagingService, REELS } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { REELS_MANIFEST } from "../reels.messaging";
+import { FeedColdStartJobPayload, FeedLowEventPayload } from "../reels.interface";
 
 @Injectable()
 export class ReelsFeedService {
@@ -56,12 +58,13 @@ export class ReelsFeedService {
         const feedLength = await this.reelsRepository.getFeedLength(userId);
 
         if (feedLength === 0) {
+            const feedColdStartPayload: FeedColdStartJobPayload = {
+                userId,
+                reason: REELS_MANIFEST.jobs.FEED_COLD_START.reason,
+            }
             void this.messagingService.dispatchJob(
-                REELS.QUEUE_JOBS.FEED_COLD_START, 
-                {
-                    userId,
-                    reason: REELS.QUEUE_JOBS.FEED_COLD_START,
-                }
+                REELS_MANIFEST.jobs.FEED_COLD_START.jobName, 
+                feedColdStartPayload,
             );
 
             const RETRY_COUNT = 3;
@@ -93,12 +96,13 @@ export class ReelsFeedService {
                 const remaining =
                     await this.reelsRepository.getFeedLength(userId);
                 if (remaining <= FEED_LOW_THRESHOLD) {
+                    const feedLowPayload: FeedLowEventPayload = {
+                        userId,
+                        remaining,
+                    }
                     void this.messagingService.dispatchEvent(
-                        REELS.EVENTS.FEED_EVENTS.LOW,
-                        {
-                            userId,
-                            remaining,
-                        },
+                        REELS_MANIFEST.events.FEED_LOW.eventType,
+                        feedLowPayload,
                     );
                 }
 
@@ -133,12 +137,13 @@ export class ReelsFeedService {
 
         const remaining = await this.reelsRepository.getFeedLength(userId);
         if (remaining <= FEED_LOW_THRESHOLD) {
+            const feedLowPayload: FeedLowEventPayload = {
+                userId,
+                remaining,
+            };
             void this.messagingService.dispatchEvent(
-                REELS.EVENTS.FEED_EVENTS.LOW,
-                {
-                    userId,
-                    remaining,
-                },
+                REELS_MANIFEST.events.FEED_LOW.eventType,
+                feedLowPayload,
             );
         }
 

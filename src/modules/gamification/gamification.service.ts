@@ -23,8 +23,6 @@ import { RedisService } from "@redis/redis.service";
 import { BadgeCriteriaRegistry } from "./criteria/criteria.registry";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 import {
-    XpAwardJobPayload,
-    BadgeEvaluationJobPayload,
     AwardedBadgePayload,
     CriteriaEvaluationContext,
 } from "./entities/gamification.entity";
@@ -38,6 +36,9 @@ import {
     SSE_EVENTS_CHANNEL,
     GAMIFICATION_PUBSUB_CHANNEL,
 } from "./gamification.constants";
+import { BadgeEvaluationJobPayload, XpAwardedEventPayload, XpAwardJobPayload } from "./gamification.interface";
+import { GAMIFICATION_MANIFEST } from "./gamification.messaging";
+import { MessagingService } from "@modules/messaging/messaging.service";
 
 /**
  * Core gamification logic. All methods are called by BullMQ workers.
@@ -53,6 +54,7 @@ export class GamificationServiceImpl extends GamificationService {
     constructor(
         private readonly gamificationRepository: GamificationRepository,
         private readonly redis: RedisService,
+        private readonly messagingService: MessagingService,
     ) {
         super();
     }
@@ -177,17 +179,17 @@ export class GamificationServiceImpl extends GamificationService {
             await this.updateLeaderboardForUser(userId, xp_amount);
         }
 
+        const eventPayload: XpAwardedEventPayload = {
+            userId,
+            xp_amount,
+            source,
+        }
+
         // Publish XP_AWARDED event
-        void this.redis.publish(
-            GAMIFICATION_PUBSUB_CHANNEL,
-            JSON.stringify({
-                event: GAMIFICATION_EVENTS.XP_AWARDED,
-                userId,
-                xp_amount,
-                source,
-                timestamp: new Date().toISOString(),
-            }),
-        );
+        void this.messagingService.dispatchEvent(
+            GAMIFICATION_MANIFEST.events.XP_AWARDED.eventType,
+            eventPayload,
+        )
 
         this.logger.log(
             `[awardXp] Awarded ${xp_amount} XP + ${tokenDelta} tokens to userId=${userId} source=${source}`,

@@ -52,6 +52,6 @@ export const GAMIFICATION_MANIFEST = {
         PATH_COMPLETED: {
             eventType: "PATH_COMPLETED",
             channel: REDIS_CHANNELS.GAMIFICATION_EVENTS,
-        }
+        },
     },
 } as const satisfies ModuleMessagingManifest;

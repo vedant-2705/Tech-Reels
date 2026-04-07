@@ -36,7 +36,9 @@ import {
     REELS_PRESIGN_EXPIRES_IN,
     REELS_S3_ENV,
 } from "../reels.constants";
-import { MessagingService, REELS } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { REELS_MANIFEST } from "../reels.messaging";
+import { VideoProcessJobPayload } from "../reels.interface";
 
 @Injectable()
 export class ReelsUploadService {
@@ -151,11 +153,15 @@ export class ReelsUploadService {
 
         await this.reelsRepository.deleteDraft(reelId);
 
-        void this.messagingService.dispatchJob(REELS.QUEUE_JOBS.VIDEO_PROCESS, {
+        const payload: VideoProcessJobPayload = {
             reelId,
             rawKey: dto.raw_key,
             userId,
-        });
+        }
+        void this.messagingService.dispatchJob(
+            REELS_MANIFEST.jobs.VIDEO_PROCESS.jobName,
+            payload,
+        );
 
         return {
             reel_id: reelId,

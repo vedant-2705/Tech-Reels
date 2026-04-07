@@ -10,18 +10,18 @@
  *   { userId: string, reason: FeedJobReason }
  */
 
-import { Injectable, Logger } from "@nestjs/common";
-import { Processor, WorkerHost } from "@nestjs/bullmq";
+import { Injectable } from "@nestjs/common";
+import { Processor } from "@nestjs/bullmq";
 import { Job } from "bullmq";
 
 import { QUEUES } from "@queues/queue-names";
 import { FeedBuilderService } from "../services/feed-builder.service";
-import { FeedJobReason } from "../feed.constants";
+import { BaseWorker } from "@modules/messaging";
 
 /** Shape of every job payload on the FEED_BUILD queue. */
-interface FeedBuildJobData {
+interface FeedBuildJobPayload {
     userId: string;
-    reason: FeedJobReason;
+    reason: string
 }
 
 /**
@@ -29,9 +29,7 @@ interface FeedBuildJobData {
  */
 @Processor(QUEUES.FEED_BUILD)
 @Injectable()
-export class FeedBuildWorker extends WorkerHost {
-    private readonly logger = new Logger(FeedBuildWorker.name);
-
+export class FeedBuildWorker extends BaseWorker<FeedBuildJobPayload> {
     /**
      * @param feedBuilder Orchestrates the full feed recommendation pipeline.
      */
@@ -47,8 +45,8 @@ export class FeedBuildWorker extends WorkerHost {
      * @param job BullMQ job carrying FeedBuildJobData.
      * @returns void
      */
-    async process(job: Job<FeedBuildJobData>): Promise<void> {
-        const { userId, reason } = job.data;
+    async handle(payload: FeedBuildJobPayload, job: Job): Promise<void> {
+        const { userId, reason } = payload;
 
         if (!userId) {
             this.logger.warn(

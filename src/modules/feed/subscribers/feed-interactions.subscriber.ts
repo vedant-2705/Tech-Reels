@@ -19,24 +19,12 @@
  *   No other changes required.
  */
 
-import {
-    Injectable,
-    Logger,
-    OnModuleDestroy,
-    OnModuleInit,
-} from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
-import { Redis } from "ioredis";
+import { Injectable } from "@nestjs/common";
 
 import { RedisService } from "@redis/redis.service";
-import { QUEUES } from "@queues/queue-names";
 
 import { FeedEventRegistry } from "../events/registry/feed-event.registry";
-import {
-    IFeedEventHandler,
-    FeedEventPayload,
-} from "../events/handlers/ifeed-event-handler.interface";
+import { IFeedEventHandler } from "../events/handlers/ifeed-event-handler.interface";
 import { FEED_MODULE_CONSTANTS, FEED_JOB_REASONS } from "../feed.constants";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +38,13 @@ import "../events/handlers/reel-unliked-affinity.handler";
 import "../events/handlers/reel-saved-affinity.handler";
 import "../events/handlers/reel-unsaved-affinity.handler";
 import "../events/handlers/reel-shared-affinity.handler";
+import {
+    AppMessage,
+    BaseSubscriber,
+    MessagingService,
+} from "@modules/messaging";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { FEED_MANIFEST } from "../feed.messaging";
 
 /**
  * Manages a dedicated Redis subscriber connection for Feed module events.
@@ -57,29 +52,38 @@ import "../events/handlers/reel-shared-affinity.handler";
  * Handles FEED_LOW inline without a dedicated handler class.
  */
 @Injectable()
-export class FeedInteractionsSubscriber
-    implements OnModuleInit, OnModuleDestroy
-{
-    private readonly logger = new Logger(FeedInteractionsSubscriber.name);
-
-    /** Dedicated Redis connection - never shared with RedisService.client. */
-    private subscriber!: Redis;
-
+export class FeedInteractionsSubscriber extends BaseSubscriber {
     /** Instantiated handler map built during onModuleInit. */
     private readonly instances = new Map<string, IFeedEventHandler>();
 
     /**
      * @param redis Shared Redis service - client.duplicate() used for subscriber conn.
-     * @param affinityQueue AFFINITY_UPDATE queue - passed to handler constructors.
-     * @param feedBuildQueue FEED_BUILD queue - used inline for FEED_LOW handling.
+     * @param messagingService Used by handlers to dispatch FEED_BUILD jobs in response to affinity events.
      */
     constructor(
-        private readonly redis: RedisService,
-        @InjectQueue(QUEUES.AFFINITY_UPDATE)
-        private readonly affinityQueue: Queue,
-        @InjectQueue(QUEUES.FEED_BUILD)
-        private readonly feedBuildQueue: Queue,
-    ) {}
+        redisService: RedisService,
+        private readonly messagingService: MessagingService,
+    ) {
+        super(redisService);
+    }
+
+    // -------------------------------------------------------------------------
+    // Channel declaration
+    // -------------------------------------------------------------------------
+
+    /**
+     * Channels derived from FeedEventRegistry (user_interactions, video_telemetry)
+     * plus feed_events which is handled inline and not in the registry.
+     */
+    protected channels(): string[] {
+        const registryChannels = FeedEventRegistry.getChannels();
+        return [
+            ...new Set([
+                ...registryChannels,
+                FEED_MODULE_CONSTANTS.FEED_EVENTS,
+            ]),
+        ];
+    }
 
     /**
      * Instantiate all registered handlers with injected deps, then subscribe
@@ -88,103 +92,52 @@ export class FeedInteractionsSubscriber
      * @returns void
      */
     async onModuleInit(): Promise<void> {
-        // Instantiate every registered handler constructor with injected deps.
-        // Handlers receive RedisService + affinityQueue (not DatabaseService).
         for (const [key, HandlerClass] of FeedEventRegistry.getHandlers()) {
-            const instance = new HandlerClass(this.redis, this.affinityQueue);
+            const instance = new HandlerClass(
+                this.redisService,
+                this.messagingService,
+            );
             this.instances.set(key, instance);
         }
 
-        // Dedicated connection - duplicate() copies config from shared client.
-        // pub/sub mode blocks regular commands on the connection it runs on.
-        this.subscriber = this.redis.client.duplicate();
-
-        this.subscriber.on("error", (err: Error) => {
-            this.logger.error(
-                `[FeedInteractionsSubscriber] Redis error: ${err.message}`,
-            );
-        });
-
-        // Derive channels from registry (user_interactions, video_telemetry)
-        // and add feed_events manually - FEED_LOW is handled inline, so the
-        // registry never emits feed_events from getChannels().
-        const registryChannels = FeedEventRegistry.getChannels();
-        const allChannels = [
-            ...new Set([
-                ...registryChannels,
-                FEED_MODULE_CONSTANTS.FEED_EVENTS,
-            ]),
-        ];
-
-        await this.subscriber.subscribe(...allChannels);
-
-        this.subscriber.on("message", (channel: string, message: string) => {
-            void this.onMessage(channel, message);
-        });
-
-        this.logger.log(`Subscribed to channels: ${allChannels.join(", ")}`);
+        // Delegate connection + subscription to BaseSubscriber
+        await super.onModuleInit();
     }
 
+    // -------------------------------------------------------------------------
+    // Routing
+    // -------------------------------------------------------------------------
+
     /**
-     * Route incoming pub/sub message to the correct handler.
-     * FEED_LOW on feed_events is handled inline - enqueues FEED_BUILD job
-     * with a circuit breaker check to prevent job pile-up.
-     * All other events are routed via FeedEventRegistry to handler instances.
-     * Malformed messages are logged and swallowed - never throw from here.
+     * Routes AppMessage envelopes to the correct handler.
+     * Routing key: `{channel}:{message.type}` - matches registry key format.
      *
-     * @param channel Redis pub/sub channel name.
-     * @param message Raw JSON string payload.
-     * @returns void
+     * FEED_LOW is handled inline before registry lookup.
+     * Unhandled keys are silently ignored (other modules share channels).
      */
-    private async onMessage(channel: string, message: string): Promise<void> {
-        let parsed: FeedEventPayload | null = null;
-
-        try {
-            parsed = JSON.parse(message) as FeedEventPayload;
-        } catch {
-            this.logger.warn(
-                `Failed to parse message on channel "${channel}": ${message}`,
-            );
-            return;
-        }
-
-        const event = parsed?.event;
-        if (!event) {
-            this.logger.warn(`Missing event field on channel "${channel}"`);
-            return;
-        }
-
-        // ---------------------------------------------------------------------------
-        // Inline handler: FEED_LOW
-        // Too simple to warrant a dedicated handler class - just enqueue FEED_BUILD.
-        // Circuit breaker: skip if a job for this userId is already waiting/active.
-        // ---------------------------------------------------------------------------
+    protected async route(
+        channel: string,
+        message: AppMessage<unknown>,
+    ): Promise<void> {
+        // Inline handler: FEED_LOW - dispatch a FEED_BUILD job
         if (
             channel === FEED_MODULE_CONSTANTS.FEED_EVENTS &&
-            event === FEED_MODULE_CONSTANTS.FEED_LOW
+            message.type === REELS_MANIFEST.events.FEED_LOW.eventType
         ) {
-            await this.handleFeedLow(parsed);
+            await this.handleFeedLow(message);
             return;
         }
 
-        // ---------------------------------------------------------------------------
         // Registry dispatch: all affinity events
-        // ---------------------------------------------------------------------------
-        const key = `${channel}:${event}`;
+        const key = `${channel}:${message.type}`;
         const handler = this.instances.get(key);
 
         if (!handler) {
-            // Not an error - other modules publish to the same channels.
+            // Not an error - other modules publish to the same channels
             return;
         }
 
-        try {
-            await handler.handle(parsed);
-        } catch (err) {
-            this.logger.error(
-                `Handler failed for key "${key}": ${(err as Error).message}`,
-            );
-        }
+        await handler.handle(message);
     }
 
     /**
@@ -196,7 +149,8 @@ export class FeedInteractionsSubscriber
      * @param payload Parsed FEED_LOW payload containing userId.
      * @returns void
      */
-    private async handleFeedLow(payload: FeedEventPayload): Promise<void> {
+    private async handleFeedLow(message: AppMessage<unknown>): Promise<void> {
+        const payload = message.payload as { userId?: string };
         const userId = payload["userId"] as string | undefined;
 
         if (!userId) {
@@ -206,28 +160,12 @@ export class FeedInteractionsSubscriber
 
         try {
             // Circuit breaker: check for existing waiting jobs for this user.
-            // getJobs(['waiting', 'active']) returns jobs currently in the queue.
-            // We match on job.data.userId to avoid rebuilding for the same user.
-            const waitingJobs = await this.feedBuildQueue.getJobs([
-                "waiting",
-                "active",
-            ]);
 
-            const alreadyQueued = waitingJobs.some(
-                (job) => job.data?.userId === userId,
+            await this.messagingService.dispatchJob(
+                FEED_MANIFEST.jobs.FEED_LOW_REBUILD.jobName,
+                { userId, reason: FEED_JOB_REASONS.FEED_LOW },
+                { jobId: `feed_low:${userId}` }, // BullMQ dedup: ignored if already queued
             );
-
-            if (alreadyQueued) {
-                this.logger.debug(
-                    `FEED_LOW skipped - build job already queued for userId=${userId}`,
-                );
-                return;
-            }
-
-            await this.feedBuildQueue.add(QUEUES.FEED_BUILD, {
-                userId,
-                reason: FEED_JOB_REASONS.FEED_LOW,
-            });
 
             this.logger.debug(
                 `FEED_BUILD enqueued for userId=${userId} reason=feed_low`,
@@ -237,14 +175,5 @@ export class FeedInteractionsSubscriber
                 `handleFeedLow failed for userId=${userId}: ${(err as Error).message}`,
             );
         }
-    }
-
-    /**
-     * Gracefully disconnect the dedicated subscriber connection on shutdown.
-     *
-     * @returns void
-     */
-    async onModuleDestroy(): Promise<void> {
-        await this.subscriber.quit();
     }
 }

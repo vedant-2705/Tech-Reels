@@ -24,8 +24,9 @@ import {
 } from "./ireel-event-handler.interface";
 import { ReelEventRegistry } from "../registry/reel-event.registry";
 import { REELS_MODULE_CONSTANTS } from "../../reels.constants";
-import { AppMessage, REELS } from "@modules/messaging";
-import { ReelSharedEventPayload } from "@modules/messaging/messaging.interface";
+import { AppMessage } from "@modules/messaging";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { ReelSharedEventPayload } from "@modules/reels/reels.interface";
 
 /**
  * Handles REEL_SHARED pub/sub events.
@@ -33,7 +34,7 @@ import { ReelSharedEventPayload } from "@modules/messaging/messaging.interface";
  */
 export class ReelSharedHandler implements IReelEventHandler {
     readonly channel = REELS_MODULE_CONSTANTS.USER_INTERACTIONS;
-    readonly event = REELS.EVENTS.USER_INTERACTION.SHARED;
+    readonly event = REELS_MANIFEST.events.REEL_SHARED.eventType;
 
     private readonly logger = new Logger(ReelSharedHandler.name);
 
@@ -78,6 +79,6 @@ export class ReelSharedHandler implements IReelEventHandler {
 // ---------------------------------------------------------------------------
 ReelEventRegistry.register(
     REELS_MODULE_CONSTANTS.USER_INTERACTIONS,
-    REELS.EVENTS.USER_INTERACTION.SHARED,
+    REELS_MANIFEST.events.REEL_SHARED.eventType,
     ReelSharedHandler,
 );

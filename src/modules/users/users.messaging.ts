@@ -17,10 +17,12 @@ export const USERS_MANIFEST = {
         REBUILD_FEED: {
             jobName: "rebuild",
             queue: QUEUES.FEED_BUILD,
+            reason: "User profile updated - rebuild feed",
         },
         NEW_USER: {
             jobName: "new_user",
             queue: QUEUES.FEED_BUILD,
+            reason: "New user - build initial feed",
         },
     },
     events: {

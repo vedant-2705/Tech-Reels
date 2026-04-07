@@ -19,8 +19,6 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
 
 import { SkillPathsService } from "./skill-paths.service.abstract";
 import { SkillPathsRepository } from "./skill-paths.repository";
@@ -55,7 +53,6 @@ import {
     SKILL_PATH_STATUS,
 } from "./skill-paths.constants";
 
-import { QUEUES } from "@queues/queue-names";
 import { uuidv7 } from "@common/utils/uuidv7.util";
 import { MessageResponseDto } from "@common/dto/message-response.dto";
 

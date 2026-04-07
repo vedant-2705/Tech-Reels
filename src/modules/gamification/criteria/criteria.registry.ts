@@ -12,7 +12,6 @@
  */
 
 import { ICriteria } from "./icriteria.interface";
-import { ChallengeCorrectCountCriteria as _CCC } from "../entities/gamification.entity";
 import { CriteriaType } from "../gamification.constants";
 
 type CriteriaConstructor = new () => ICriteria;

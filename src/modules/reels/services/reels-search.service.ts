@@ -26,7 +26,9 @@ import {
     REELS_APP_ENV,
     REELS_REDIS_KEYS,
 } from "../reels.constants";
-import { MessagingService, REELS } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { REELS_MANIFEST } from "../reels.messaging";
+import { FeedSearchJobPayload, ReelSharedEventPayload } from "../reels.interface";
 
 @Injectable()
 export class ReelsSearchService {
@@ -138,12 +140,16 @@ export class ReelsSearchService {
                 userId,
                 page,
             );
-
-        void this.messagingService.dispatchJob(REELS.QUEUE_JOBS.FEED_SEARCH, {
+        
+        const payload: FeedSearchJobPayload = {
             userId,
-            reason: REELS.QUEUE_JOBS.FEED_SEARCH,
+            reason: REELS_MANIFEST.jobs.FEED_SEARCH.reason,
             tagIds: matchedTags.map((t) => t.id),
-        });
+        }
+        void this.messagingService.dispatchJob(
+            REELS_MANIFEST.jobs.FEED_SEARCH.jobName, 
+            payload,
+        );
 
         return {
             data: pageReelsMapped,
@@ -175,22 +181,14 @@ export class ReelsSearchService {
             1,
         );
 
+        const payload: ReelSharedEventPayload = {
+            userId,
+            reelId,
+            tags: reel.tags.map((t) => t.id),
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.USER_INTERACTION.SHARED,
-            {
-                userId,
-                reelId,
-                tags: reel.tags.map((t) => t.id),
-            },
-        );
-
-        void this.messagingService.dispatchJob(
-            REELS.EVENTS.USER_INTERACTION.SHARED,
-            {
-                userId,
-                reason: REELS.EVENTS.USER_INTERACTION.SHARED,
-                tagIds: reel.tags.map((t) => t.id),
-            },
+            REELS_MANIFEST.events.REEL_SHARED.eventType,
+            payload,
         );
 
         const appBaseUrl =

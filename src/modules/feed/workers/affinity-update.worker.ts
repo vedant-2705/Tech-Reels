@@ -23,9 +23,10 @@ import {
     FEED_MODULE_CONSTANTS,
     WATCH_COMPLETION_THRESHOLDS,
 } from "../feed.constants";
+import { BaseWorker } from "@modules/messaging";
 
 /** Shape of every job payload on the AFFINITY_UPDATE queue. */
-interface AffinityUpdateJobData {
+interface AffinityUpdateJobPayload {
     userId: string;
     reelId: string;
     eventType: string;
@@ -37,9 +38,7 @@ interface AffinityUpdateJobData {
  */
 @Processor(QUEUES.AFFINITY_UPDATE)
 @Injectable()
-export class AffinityUpdateWorker extends WorkerHost {
-    private readonly logger = new Logger(AffinityUpdateWorker.name);
-
+export class AffinityUpdateWorker extends BaseWorker<AffinityUpdateJobPayload> {
     /**
      * @param feedRepository Feed data-access layer for tag lookups and upserts.
      */
@@ -57,8 +56,8 @@ export class AffinityUpdateWorker extends WorkerHost {
      * @param job BullMQ job carrying AffinityUpdateJobData.
      * @returns void
      */
-    async process(job: Job<AffinityUpdateJobData>): Promise<void> {
-        const { userId, reelId, eventType, completion_pct } = job.data;
+    async handle(payload: AffinityUpdateJobPayload, job: Job): Promise<void> {
+        const { userId, reelId, eventType, completion_pct } = payload;
 
         const delta = this.resolveDelta(eventType, completion_pct);
 

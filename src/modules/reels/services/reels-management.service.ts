@@ -42,7 +42,9 @@ import {
     REELS_MESSAGES,
 } from "../reels.constants";
 import { TAGS_ALL_KEY, TAGS_CATEGORY_PREFIX } from "@common/constants/redis-keys.constants";
-import { MessagingService, REELS } from "@modules/messaging";
+import { MessagingService } from "@modules/messaging";
+import { REELS_MANIFEST } from "../reels.messaging";
+import { ReelDeletedEventPayload } from "../reels.interface";
 
 @Injectable()
 export class ReelsManagementService {
@@ -166,12 +168,13 @@ export class ReelsManagementService {
         await this.reelsRepository.bulkRemoveFromTagSets(reel.tags.map((t) => t.id), reelId);
         await this.invalidateTagsCache();
 
+        const payload: ReelDeletedEventPayload = {
+            userId,
+            reelId,
+        }
         void this.messagingService.dispatchEvent(
-            REELS.EVENTS.REEL_DELETED,
-            {
-                reelId,
-                userId,
-            },
+            REELS_MANIFEST.events.REEL_DELETED.eventType,
+            payload,
         );
 
         return { message: REELS_MESSAGES.DELETED };

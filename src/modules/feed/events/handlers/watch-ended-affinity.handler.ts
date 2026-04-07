@@ -10,25 +10,17 @@
  */
 
 import { Logger } from "@nestjs/common";
-import { Queue } from "bullmq";
 
 import { RedisService } from "@redis/redis.service";
-import { QUEUES } from "@queues/queue-names";
 
-import {
-    IFeedEventHandler,
-    FeedEventPayload,
-} from "./ifeed-event-handler.interface";
+import { IFeedEventHandler } from "./ifeed-event-handler.interface";
 import { FeedEventRegistry } from "../registry/feed-event.registry";
 import { FEED_MODULE_CONSTANTS } from "../../feed.constants";
-
-/** Typed payload for REEL_WATCH_ENDED events. */
-interface ReelWatchEndedPayload extends FeedEventPayload {
-    userId: string;
-    reelId: string;
-    completion_pct: number;
-    timestamp: string;
-}
+import { AppMessage, MessagingService } from "@modules/messaging";
+import { AffinityUpdateJobPayload } from "@modules/feed/feed.interface";
+import { REELS_MANIFEST } from "@modules/reels/reels.messaging";
+import { FEED_MANIFEST } from "@modules/feed/feed.messaging";
+import { ReelWatchEndedEventPayload } from "@modules/reels/reels.interface";
 
 /**
  * Handles REEL_WATCH_ENDED pub/sub events for affinity updates.
@@ -36,37 +28,42 @@ interface ReelWatchEndedPayload extends FeedEventPayload {
  */
 export class WatchEndedAffinityHandler implements IFeedEventHandler {
     readonly channel = FEED_MODULE_CONSTANTS.VIDEO_TELEMETRY;
-    readonly event = FEED_MODULE_CONSTANTS.REEL_WATCH_ENDED;
+    readonly event = REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType;
 
     private readonly logger = new Logger(WatchEndedAffinityHandler.name);
 
     /**
      * @param _redis Reserved for future Redis-side operations.
-     * @param affinityQueue AFFINITY_UPDATE BullMQ queue for job enqueue.
+     * @param messagingService Service for dispatching messages.
      */
     constructor(
         private readonly _redis: RedisService,
-        private readonly affinityQueue: Queue,
+        private readonly messagingService: MessagingService,
     ) {}
 
     /**
      * Handle REEL_WATCH_ENDED - enqueue affinity update job with completion_pct.
      * The worker determines the delta tier (WATCH_HIGH/MID/LOW) from completion_pct.
      *
-     * @param payload Parsed REEL_WATCH_ENDED payload.
+     * @param message The incoming message.
      * @returns void
      */
-    async handle(payload: FeedEventPayload): Promise<void> {
+    async handle(message: AppMessage<unknown>): Promise<void> {
         const { userId, reelId, completion_pct } =
-            payload as ReelWatchEndedPayload;
+            message.payload as ReelWatchEndedEventPayload;
+
+        const payload: AffinityUpdateJobPayload = {
+            userId,
+            reelId,
+            eventType: REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType,
+            completion_pct,
+        };
 
         try {
-            await this.affinityQueue.add(QUEUES.AFFINITY_UPDATE, {
-                userId,
-                reelId,
-                eventType: FEED_MODULE_CONSTANTS.REEL_WATCH_ENDED,
-                completion_pct,
-            });
+            void this.messagingService.dispatchJob(
+                FEED_MANIFEST.jobs.AFFINITY_UPDATE.jobName,
+                payload,
+            );
         } catch (err) {
             this.logger.error(
                 `Failed to enqueue AFFINITY_UPDATE for REEL_WATCH_ENDED userId=${userId} reelId=${reelId}: ${(err as Error).message}`,
@@ -81,6 +78,6 @@ export class WatchEndedAffinityHandler implements IFeedEventHandler {
 // ---------------------------------------------------------------------------
 FeedEventRegistry.register(
     FEED_MODULE_CONSTANTS.VIDEO_TELEMETRY,
-    FEED_MODULE_CONSTANTS.REEL_WATCH_ENDED,
+    REELS_MANIFEST.events.REEL_WATCH_ENDED.eventType,
     WatchEndedAffinityHandler,
 );

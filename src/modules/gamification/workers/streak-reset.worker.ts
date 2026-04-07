@@ -19,8 +19,8 @@
  * only one fires regardless of pod count.
  */
 
-import { Processor, WorkerHost, InjectQueue } from "@nestjs/bullmq";
-import { Logger, OnModuleInit } from "@nestjs/common";
+import { Processor, InjectQueue } from "@nestjs/bullmq";
+import { OnModuleInit } from "@nestjs/common";
 import { Job, Queue } from "bullmq";
 import { GamificationService } from "../gamification.service.abstract";
 import { QUEUES } from "@queues/queue-names";
@@ -29,26 +29,36 @@ import {
     STREAK_RESET_CRON,
     STREAK_RESET_BATCH_SIZE,
 } from "../gamification.constants";
+import { BaseWorker } from "@modules/messaging";
 
 /** Payload for UPDATE_USER_STREAK jobs. */
 interface UpdateUserStreakPayload {
     userId: string;
 }
 
+/** Payload for DAILY_STREAK_RESET jobs (scheduled, no input). */
+type DailyStreakResetPayload = Record<string, never>;
+
+/** Union of both payload shapes on this queue. */
+type StreakJobPayload = UpdateUserStreakPayload | DailyStreakResetPayload;
+
 /**
  * Worker that processes both daily batch streak resets and
  * per-user streak updates triggered by watch events.
  */
 @Processor(QUEUES.STREAK_RESET)
-export class StreakResetWorker extends WorkerHost implements OnModuleInit {
-    private readonly logger = new Logger(StreakResetWorker.name);
-
+export class StreakResetWorker
+    extends BaseWorker<StreakJobPayload>
+    implements OnModuleInit
+{
     /**
      * @param gamificationService Service containing streak business logic.
      * @param streakResetQueue    Injected queue to schedule the repeatable job.
      */
     constructor(
         private readonly gamificationService: GamificationService,
+        // @InjectQueue kept intentionally — used for self-scheduling the
+        // repeatable daily job, NOT for dispatching outbound jobs.
         @InjectQueue(QUEUES.STREAK_RESET)
         private readonly streakResetQueue: Queue,
     ) {
@@ -76,7 +86,7 @@ export class StreakResetWorker extends WorkerHost implements OnModuleInit {
         );
 
         this.logger.log(
-            `[StreakResetWorker] Daily batch job scheduled: cron="${STREAK_RESET_CRON}" UTC`,
+            `Daily batch job scheduled: cron="${STREAK_RESET_CRON}" UTC`,
         );
     }
 
@@ -85,7 +95,7 @@ export class StreakResetWorker extends WorkerHost implements OnModuleInit {
      *
      * @param job BullMQ job - either daily batch or per-user update.
      */
-    async process(job: Job): Promise<void> {
+    async handle(payload: StreakJobPayload, job: Job): Promise<void> {
         switch (job.name) {
             case GAMIFICATION_STREAK_JOBS.DAILY_STREAK_RESET:
                 await this.handleDailyBatchReset(job);
@@ -93,14 +103,13 @@ export class StreakResetWorker extends WorkerHost implements OnModuleInit {
 
             case GAMIFICATION_STREAK_JOBS.UPDATE_USER_STREAK:
                 await this.handleUpdateUserStreak(
-                    job as Job<UpdateUserStreakPayload>,
+                    payload as UpdateUserStreakPayload,
+                    job,
                 );
                 break;
 
             default:
-                this.logger.warn(
-                    `[StreakResetWorker] Unknown job name "${job.name}" - skipping.`,
-                );
+                this.logger.warn(`Unknown job name "${job.name}" - skipping.`);
         }
     }
 
@@ -115,9 +124,7 @@ export class StreakResetWorker extends WorkerHost implements OnModuleInit {
      * @param job BullMQ repeatable job (payload is empty).
      */
     private async handleDailyBatchReset(job: Job): Promise<void> {
-        this.logger.log(
-            `[StreakResetWorker] Starting daily batch reset job ${job.id}`,
-        );
+        this.logger.log(`Starting daily batch reset job ${job.id}`);
 
         let offset = 0;
         let totalProcessed = 0;
@@ -132,12 +139,12 @@ export class StreakResetWorker extends WorkerHost implements OnModuleInit {
             offset += STREAK_RESET_BATCH_SIZE;
 
             this.logger.debug(
-                `[StreakResetWorker] Batch complete: offset=${offset} count=${batchCount}`,
+                `Batch complete: offset=${offset} count=${batchCount}`,
             );
         } while (batchCount === STREAK_RESET_BATCH_SIZE);
 
         this.logger.log(
-            `[StreakResetWorker] Daily batch reset complete. Users processed: ${totalProcessed}`,
+            `Daily batch reset complete. Users processed: ${totalProcessed}`,
         );
     }
 
@@ -149,20 +156,19 @@ export class StreakResetWorker extends WorkerHost implements OnModuleInit {
      * @param job BullMQ job with { userId } payload.
      */
     private async handleUpdateUserStreak(
-        job: Job<UpdateUserStreakPayload>,
+        payload: UpdateUserStreakPayload,
+        job: Job,
     ): Promise<void> {
-        const { userId } = job.data;
+        const { userId } = payload;
 
         if (!userId) {
             this.logger.warn(
-                `[StreakResetWorker] UPDATE_USER_STREAK job ${job.id} missing userId - skipping.`,
+                `UPDATE_USER_STREAK job ${job.id} missing userId - skipping.`,
             );
             return;
         }
 
-        this.logger.debug(
-            `[StreakResetWorker] Updating streak for userId=${userId}`,
-        );
+        this.logger.debug(`Updating streak for userId=${userId}`);
 
         await this.gamificationService.updateStreak(userId);
     }

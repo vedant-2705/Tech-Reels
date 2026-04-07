@@ -9,21 +9,19 @@
  * and ON CONFLICT DO NOTHING on user_badges insert - safe to retry.
  */
 
-import { Processor, WorkerHost } from "@nestjs/bullmq";
-import { Logger } from "@nestjs/common";
+import { Processor } from "@nestjs/bullmq";
 import { Job } from "bullmq";
 import { GamificationService } from "../gamification.service.abstract";
-import { BadgeEvaluationJobPayload } from "../entities/gamification.entity";
+import { BadgeEvaluationJobPayload } from "../gamification.interface";
 import { QUEUES } from "@queues/queue-names";
 import { GAMIFICATION_BADGE_JOBS } from "../gamification.constants";
+import { BaseWorker } from "@modules/messaging";
 
 /**
  * Worker that processes badge evaluation jobs from badge_evaluation_queue.
  */
 @Processor(QUEUES.BADGE_EVALUATION)
-export class BadgeEvaluationWorker extends WorkerHost {
-    private readonly logger = new Logger(BadgeEvaluationWorker.name);
-
+export class BadgeEvaluationWorker extends BaseWorker<BadgeEvaluationJobPayload> {
     /**
      * @param gamificationService Service containing evaluateBadges business logic.
      */
@@ -36,20 +34,18 @@ export class BadgeEvaluationWorker extends WorkerHost {
      *
      * @param job BullMQ job with name and data.
      */
-    async process(job: Job<BadgeEvaluationJobPayload>): Promise<void> {
+    async handle(payload: BadgeEvaluationJobPayload, job: Job): Promise<void> {
         this.logger.debug(
-            `[BadgeEvaluationWorker] Processing job ${job.id} name=${job.name} userId=${job.data.userId} event=${job.data.event}`,
+            `Processing job ${job.id} name=${job.name} userId=${payload.userId} event=${payload.event}`,
         );
 
         switch (job.name) {
             case GAMIFICATION_BADGE_JOBS.BADGE_EVALUATION:
-                await this.gamificationService.evaluateBadges(job.data);
+                await this.gamificationService.evaluateBadges(payload);
                 break;
 
             default:
-                this.logger.warn(
-                    `[BadgeEvaluationWorker] Unknown job name "${job.name}" - skipping.`,
-                );
+                this.logger.warn(`Unknown job name "${job.name}" - skipping.`);
         }
     }
 }
