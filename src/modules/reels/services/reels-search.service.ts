@@ -28,7 +28,8 @@ import {
 } from "../reels.constants";
 import { MessagingService } from "@modules/messaging";
 import { REELS_MANIFEST } from "../reels.messaging";
-import { FeedSearchJobPayload, ReelSharedEventPayload } from "../reels.interface";
+import { ReelSharedEventPayload } from "../reels.interface";
+import { FeedFacade } from "@modules/feed";
 
 @Injectable()
 export class ReelsSearchService {
@@ -40,6 +41,7 @@ export class ReelsSearchService {
         private readonly config: ConfigService,
         private readonly reelsFeedService: ReelsFeedService,
         private readonly messagingService: MessagingService,
+        private readonly feedFacade: FeedFacade,
     ) {}
 
     /**
@@ -140,16 +142,8 @@ export class ReelsSearchService {
                 userId,
                 page,
             );
-        
-        const payload: FeedSearchJobPayload = {
-            userId,
-            reason: REELS_MANIFEST.jobs.FEED_SEARCH.reason,
-            tagIds: matchedTags.map((t) => t.id),
-        }
-        void this.messagingService.dispatchJob(
-            REELS_MANIFEST.jobs.FEED_SEARCH.jobName, 
-            payload,
-        );
+
+        void this.feedFacade.feedSearch(userId, matchedTags.map((t) => t.id));
 
         return {
             data: pageReelsMapped,

@@ -27,7 +27,8 @@ import {
 } from "../reels.constants";
 import { MessagingService } from "@modules/messaging";
 import { REELS_MANIFEST } from "../reels.messaging";
-import { FeedColdStartJobPayload, FeedLowEventPayload } from "../reels.interface";
+import { FeedLowEventPayload } from "../reels.interface";
+import { FeedFacade } from "@modules/feed";
 
 @Injectable()
 export class ReelsFeedService {
@@ -37,6 +38,7 @@ export class ReelsFeedService {
         private readonly reelsRepository: ReelsRepository,
         private readonly redis: RedisService,
         private readonly messagingService: MessagingService,
+        private readonly feedFacade: FeedFacade,
     ) {}
 
     /**
@@ -58,14 +60,7 @@ export class ReelsFeedService {
         const feedLength = await this.reelsRepository.getFeedLength(userId);
 
         if (feedLength === 0) {
-            const feedColdStartPayload: FeedColdStartJobPayload = {
-                userId,
-                reason: REELS_MANIFEST.jobs.FEED_COLD_START.reason,
-            }
-            void this.messagingService.dispatchJob(
-                REELS_MANIFEST.jobs.FEED_COLD_START.jobName, 
-                feedColdStartPayload,
-            );
+            void this.feedFacade.feedColdStart(userId);
 
             const RETRY_COUNT = 3;
             const RETRY_DELAY_MS = 300;

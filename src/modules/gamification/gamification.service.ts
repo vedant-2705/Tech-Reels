@@ -34,7 +34,6 @@ import {
     LEADERBOARD_TOP_TAGS_COUNT,
     GAMIFICATION_EVENTS,
     SSE_EVENTS_CHANNEL,
-    GAMIFICATION_PUBSUB_CHANNEL,
 } from "./gamification.constants";
 import { BadgeEvaluationJobPayload, XpAwardedEventPayload, XpAwardJobPayload } from "./gamification.interface";
 import { GAMIFICATION_MANIFEST } from "./gamification.messaging";
@@ -509,12 +508,11 @@ export class GamificationServiceImpl extends GamificationService {
 
         if (reelTags.length === 0) return;
 
-        for (const { tag_id } of reelTags) {
-            await this.gamificationRepository.incrementTopicAffinity(
-                userId,
-                tag_id,
-            );
-        }
+        const tagIds = reelTags.map(({ tag_id }) => tag_id);
+        await this.gamificationRepository.incrementTopicAffinityBatch(
+            userId,
+            tagIds,
+        );
     }
 
     /**

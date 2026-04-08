@@ -46,6 +46,7 @@ import { InvalidAvatarKeyException } from "./exceptions/invalid-avatar-key.excep
 
 import { compareHash } from "@common/utils/hash.util";
 import {
+    REASONS,
     USERS_ACCOUNT_STATUSES,
     USERS_MESSAGES,
     USERS_REDIS_KEYS,
@@ -62,8 +63,8 @@ import { ConfigService } from "@nestjs/config";
 import { LeaderboardResponseDto } from "./dto/leaderboard-response.dto";
 import { MessagingService } from "@modules/messaging";
 import { USERS_MANIFEST } from "./users.messaging";
-import { FeedBuildForNewUserJobPayload, FeedRebuildJobPayload } from "@modules/feed/feed.interface";
 import { UserAccountDeactivatedEventPayload } from "./users.interface";
+import { FeedFacade } from "@modules/feed";
 
 /**
  * Coordinates all user profile use cases, side effects, and cross-module
@@ -86,6 +87,7 @@ export class UsersServiceImpl extends UsersService {
         private readonly redis: RedisService,
         private readonly messagingService: MessagingService,
         private readonly config: ConfigService,
+        private readonly feedFacade: FeedFacade,
     ) {
         super();
     }
@@ -174,14 +176,7 @@ export class UsersServiceImpl extends UsersService {
                 `${USERS_REDIS_KEYS.FEED_QUEUE_PREFIX}:${userId}`,
             );
 
-            const payload: FeedRebuildJobPayload = {
-                userId,
-                reason: USERS_MANIFEST.jobs.REBUILD_FEED.reason,
-            };
-            void this.messagingService.dispatchJob(
-                USERS_MANIFEST.jobs.REBUILD_FEED.jobName,
-                payload,
-            );
+            void this.feedFacade.feedRebuild(userId, REASONS.FEED_REBUILD)
         }
 
         return {
@@ -223,14 +218,7 @@ export class UsersServiceImpl extends UsersService {
         await this.usersRepository.seedTopicAffinity(userId, dto.topics, 1.0);
 
         // Enqueue feed build - fire and forget
-        const payload: FeedBuildForNewUserJobPayload = {
-            userId,
-            reason: USERS_MANIFEST.jobs.NEW_USER.reason,
-        };
-        void this.messagingService.dispatchJob(
-            USERS_MANIFEST.jobs.NEW_USER.jobName,
-            payload,
-        );
+        void this.feedFacade.feedRebuild(userId, REASONS.NEW_USER);
 
         return {
             message: USERS_MESSAGES.ONBOARDING_COMPLETE,
@@ -354,7 +342,7 @@ export class UsersServiceImpl extends UsersService {
         const payload: UserAccountDeactivatedEventPayload = { userId };
         void this.messagingService.dispatchEvent(
             USERS_MANIFEST.events.ACCOUNT_DEACTIVATED.eventType,
-           payload,
+            payload,
         );
 
         return { message: USERS_MESSAGES.ACCOUNT_DEACTIVATED };

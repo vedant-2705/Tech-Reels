@@ -42,6 +42,7 @@ import { LeaderboardResetWorker } from "./workers/leaderboard-reset.worker";
 
 import { GamificationSubscriber } from "./subscribers/gamification.subscriber";
 import { MessagingModule } from "@modules/messaging";
+import { GamificationFacade } from "./gamification.facade";
 
 @Module({
     imports: [DatabaseModule, RedisModule, MessagingModule],
@@ -63,6 +64,6 @@ import { MessagingModule } from "@modules/messaging";
     ],
     // Nothing exported - this module is self-contained.
     // Cross-module access goes through thin service methods per Foundation §8.
-    exports: [],
+    exports: [GamificationFacade],
 })
 export class GamificationModule {}

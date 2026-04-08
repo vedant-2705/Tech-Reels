@@ -206,6 +206,41 @@ export class GamificationRepository extends BaseRepository {
     }
 
     /**
+     * Batch increments affinity scores for a user across multiple tags in a
+     * single query. Prevents N+1 queries when updating affinity for all tags
+     * in a reel.
+     *
+     * @param userId  UUID of the user.
+     * @param tagIds  Array of tag UUIDs.
+     */
+    async incrementTopicAffinityBatch(
+        userId: string,
+        tagIds: string[],
+    ): Promise<void> {
+        if (tagIds.length === 0) return;
+
+        // Build parameterized VALUES clause: ($1, $2), ($1, $3), ... 
+        const placeholders = tagIds
+            .map((_, idx) => `($1, $${idx + 2})`)
+            .join(', ');
+
+        const params = [userId, ...tagIds];
+
+        await this.db.query(
+            `INSERT INTO user_topic_affinity (user_id, tag_id, score, updated_at)
+             VALUES ${placeholders}
+             ON CONFLICT (user_id, tag_id)
+             DO UPDATE SET
+                 score      = LEAST(
+                                  user_topic_affinity.score + $${tagIds.length + 2},
+                                  $${tagIds.length + 3}
+                              ),
+                 updated_at = now()`,
+            [...params, AFFINITY_WATCH_INCREMENT, AFFINITY_MAX_SCORE],
+        );
+    }
+
+    /**
      * Fetches the top N tag IDs for a user ordered by affinity score DESC.
      * Used to refresh the top_tags:{userId} cache after an affinity update.
      *

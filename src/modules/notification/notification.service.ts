@@ -1,98 +1,107 @@
 /**
  * @module modules/notification/notification.service
  * @description
- * Application service for the Notification module.
- * Does NOT send notifications directly - instead enqueues jobs to notification_queue
- * for async processing by NotificationProcessorWorker.
+ * Façade service for the Notification module.
  *
- * Responsibilities:
- *   - Enqueue notification jobs with appropriate type and metadata
- *   - Called by other modules when they need to send notifications
- *   - Actual processing delegated to worker and handlers
+ * Callers (Admin, Auth, SkillPaths) inject this service and call
+ * typed methods — they never reference job names, queue names, or
+ * manifests directly. All dispatch details are encapsulated here.
+ *
+ * Internally delegates to MessagingService, which owns envelope
+ * construction, queue resolution, and retry defaults.
+ *
+ * Exported methods:
+ *   enqueueAdminMessage()  - admin action against a user (suspend, ban, warn)
+ *   enqueueWelcomeEmail()  - new user registered (email or OAuth)
+ *   enqueuePathCompleted() - user completed a skill path
  */
 
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Injectable, Logger } from "@nestjs/common";
 
-import { QUEUES } from '@queues/queue-names';
-import { NOTIFICATION_QUEUE_JOBS, NotificationType } from './notification.constants';
-import { NotificationJobPayload, NotificationMetas } from './notification.interface';
+import { MessagingService } from "@modules/messaging";
+import { NOTIFICATION_MANIFEST } from "./notification.messaging";
+import {
+    AdminMessageJobPayload,
+    AdminMessageMeta,
+    NotificationJobPayload,
+    PathCompletedJobPayload,
+    PathCompletedMeta,
+} from "./notification.interface";
 
-/**
- * Notification service: enqueues notification jobs.
- * Called by other modules via dependency injection.
- */
 @Injectable()
 export class NotificationService {
-  private readonly logger = new Logger(NotificationService.name);
+    private readonly logger = new Logger(NotificationService.name);
 
-  constructor(
-    @InjectQueue(QUEUES.NOTIFICATION)
-    private readonly notificationQueue: Queue,
-  ) {}
+    constructor(private readonly messagingService: MessagingService) {}
 
-  /**
-   * Enqueue a notification job.
-   * Used internally by the module - other modules should call this.
-   *
-   * @param type The notification type (e.g., "admin_message", "path_completed")
-   * @param userId The target user ID
-   * @param meta Type-specific metadata (e.g., reason, path_id, etc.)
-   */
-  async enqueueNotification(
-    type: NotificationType,
-    userId: string,
-    meta: NotificationMetas,
-  ): Promise<void> {
-    const payload: NotificationJobPayload = {
-      // type,
-      userId,
-      meta,
-    };
+    // -------------------------------------------------------------------------
+    // Public façade API
+    // Callers depend on these methods — never on job name strings.
+    // -------------------------------------------------------------------------
 
-    this.logger.debug(
-      `[NotificationService] Enqueueing notification job: type=${type} userId=${userId}`,
-    );
+    /**
+     * Enqueue an admin-message notification to a user.
+     * Called by AdminService when suspending, banning, or warning a user,
+     * and when disabling a reel (notifying the creator).
+     *
+     * @param userId  Target user UUID.
+     * @param meta    Reason and optional note from the admin action.
+     */
+    async enqueueAdminMessage(
+        userId: string,
+        meta: AdminMessageMeta,
+    ): Promise<void> {
+        const payload: AdminMessageJobPayload = { userId, meta };
 
-    // Fire and forget - don't await
-    void this.notificationQueue.add(
-      NOTIFICATION_QUEUE_JOBS.SEND_NOTIFICATION,
-      payload,
-      {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
-        removeOnComplete: true,
-      },
-    );
-  }
+        this.logger.debug(
+            `Enqueueing admin_message notification userId=${userId}`,
+        );
 
-  /**
-   * Send email notification directly (for synchronous use cases).
-   * Normally, prefer enqueueNotification() for async handling.
-   */
-  async sendEmailDirect(to: string, subject: string, body: string): Promise<void> {
-    this.logger.log(
-      `Sending direct email notification to ${to} with subject: ${subject}`,
-    );
-    // Direct service calls not implemented - use queue instead
-  }
+        void this.messagingService.dispatchJob(
+            NOTIFICATION_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
+            payload,
+        );
+    }
 
-  /**
-   * Send push notification directly (for synchronous use cases).
-   * Normally, prefer enqueueNotification() for async handling.
-   */
-  async sendPushDirect(
-    userId: string,
-    title: string,
-    message: string,
-  ): Promise<void> {
-    this.logger.log(
-      `Sending direct push notification to user ${userId} with title: ${title}`,
-    );
-    // Direct service calls not implemented - use queue instead
-  }
+    /**
+     * Enqueue a welcome-email notification for a newly registered user.
+     * Called by AuthService after email or OAuth registration.
+     *
+     * @param userId  Newly created user UUID.
+     */
+    async enqueueWelcomeEmail(userId: string): Promise<void> {
+        const payload: NotificationJobPayload = { userId, meta: {} };
+
+        this.logger.debug(
+            `Enqueueing welcome_email notification userId=${userId}`,
+        );
+
+        void this.messagingService.dispatchJob(
+            NOTIFICATION_MANIFEST.jobs.WELCOME_EMAIL.jobName,
+            payload,
+        );
+    }
+
+    /**
+     * Enqueue a path-completed notification for a user who finished a skill path.
+     * Called by SkillPathsService after marking a path as complete.
+     *
+     * @param userId  User UUID.
+     * @param meta    Path details (id, title, certificate URL, is_first flag).
+     */
+    async enqueuePathCompleted(
+        userId: string,
+        meta: PathCompletedMeta,
+    ): Promise<void> {
+        const payload: PathCompletedJobPayload = { userId, meta };
+
+        this.logger.debug(
+            `Enqueueing path_completed notification userId=${userId} pathId=${meta.path_id}`,
+        );
+
+        void this.messagingService.dispatchJob(
+            NOTIFICATION_MANIFEST.jobs.PATH_COMPLETED.jobName,
+            payload,
+        );
+    }
 }

@@ -47,8 +47,8 @@ import {
     UserLoggedInEventPayload,
     UserLoggedOutEventPayload,
     UserRegisteredEventPayload,
-    WelcomeEmailJobPayload,
 } from "./auth.interface";
+import { NotificationService } from "@modules/notification/notification.service";
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
@@ -63,6 +63,7 @@ export class AuthServiceImpl extends AuthService {
      * @param tokenService JWT token lifecycle service.
      * @param usernameGeneratorService Username generation service.
      * @param messagingService Service for dispatching events and jobs.
+     * @param notificationService Service for sending notifications to users.
      */
     constructor(
         private readonly authRepository: AuthRepository,
@@ -70,6 +71,7 @@ export class AuthServiceImpl extends AuthService {
         private readonly tokenService: TokenService,
         private readonly usernameGeneratorService: UsernameGeneratorService,
         private readonly messagingService: MessagingService,
+        private readonly notificationService: NotificationService,
     ) {
         super();
     }
@@ -119,11 +121,7 @@ export class AuthServiceImpl extends AuthService {
             userRegisteredPayload,
         );
 
-        const welcomeEmailPayload: WelcomeEmailJobPayload = { userId: user.id };
-        void this.messagingService.dispatchJob(
-            AUTH_MANIFEST.jobs.WELCOME_EMAIL.jobName,
-            welcomeEmailPayload,
-        );
+        void this.notificationService.enqueueWelcomeEmail(user.id);
 
         const newUserPayload: NewUserJobPayload = {
             userId: user.id,
@@ -262,11 +260,12 @@ export class AuthServiceImpl extends AuthService {
                 needsOnboarding = true;
 
                 // Async side effects for new users
-                const payload: WelcomeEmailJobPayload = { userId: user.id };
-                void this.messagingService.dispatchJob(
-                    AUTH_MANIFEST.jobs.WELCOME_EMAIL.jobName,
-                    payload,
-                );
+                // const payload: WelcomeEmailJobPayload = { userId: user.id };
+                // void this.messagingService.dispatchJob(
+                //     AUTH_MANIFEST.jobs.WELCOME_EMAIL.jobName,
+                //     payload,
+                // );
+                void this.notificationService.enqueueWelcomeEmail(user.id);
             }
         }
 

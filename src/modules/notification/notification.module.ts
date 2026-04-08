@@ -24,11 +24,14 @@ import { NotificationService } from './notification.service';
 import { EmailService } from './services/email.service';
 import { PushService } from './services/push.service';
 import { NotificationProcessorWorker } from './workers/notification-processor.worker';
-import { NotificationHandlerFactory } from './handlers/notification-handler.factory';
+
 import { AdminMessageHandler } from './handlers/admin-message.handler';
 import { PathCompletedHandler } from './handlers/path-completed.handler';
+import { WelcomeEmailHandler } from './handlers/welcome-email.handler';
+import { MessagingModule } from '@modules/messaging';
 
 @Module({
+  imports: [MessagingModule],
   providers: [
     // Core service
     NotificationService,
@@ -40,9 +43,7 @@ import { PathCompletedHandler } from './handlers/path-completed.handler';
     // Handlers (format notifications based on type)
     AdminMessageHandler,
     PathCompletedHandler,
-
-    // Factory (get right handler for a type)
-    NotificationHandlerFactory,
+    WelcomeEmailHandler,
 
     // Worker (processes jobs from queue)
     NotificationProcessorWorker,

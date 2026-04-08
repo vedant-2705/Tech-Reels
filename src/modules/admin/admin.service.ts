@@ -79,10 +79,8 @@ import { AdminReelNotFoundException } from "./exceptions/admin-reel-not-found.ex
 import { AdminChallengeNotFoundException } from "./exceptions/admin-challenge-not-found.exception";
 import { MaxChallengesException } from "./exceptions/max-challenges.exception";
 import { AdminService } from "./admin.service.abstract";
-import { MessagingService } from "@modules/messaging";
-import { ADMIN_MANIFEST } from "./admin.messaging";
-import { AdminMessageJobPayload } from "@modules/notification/notification.interface";
-import { XpAwardJobPayload } from "@modules/gamification/gamification.interface";
+import { NotificationService } from "@modules/notification/notification.service";
+import { GamificationFacade } from "@modules/gamification";
 
 /**
  * Orchestrates all Admin workflows including user management, moderation,
@@ -95,12 +93,14 @@ export class AdminServiceImpl extends AdminService {
     /**
      * @param adminRepository Admin data-access layer.
      * @param authSessionService Cross-module service for session revocation.
-     * @param messagingService Messaging service for dispatching notification and XP award jobs.
+     * @param notificationService Service for dispatching notifications.
+     * @param gamificationFacade Facade for awarding XP without coupling to job details.
      */
     constructor(
         private readonly adminRepository: AdminRepository,
         private readonly authSessionService: AuthSessionService,
-        private readonly messagingService: MessagingService,
+        private readonly notificationService: NotificationService,
+        private readonly gamificationFacade: GamificationFacade,
     ) {
         super();
     }
@@ -214,17 +214,9 @@ export class AdminServiceImpl extends AdminService {
             await this.authSessionService.revokeAllSessions(userId);
             await this.authSessionService.incrementTokenVersion(userId);
         }
-
-        const payload: AdminMessageJobPayload = {
-            userId,
-            meta: {
-                ...(dto.reason && { reason: dto.reason }),
-            }
-        };
-        void this.messagingService.dispatchJob(
-            ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
-            payload,
-        )
+        void this.notificationService.enqueueAdminMessage(userId, {
+            ...(dto.reason && { reason: dto.reason }),
+        });
 
         // Audit log (repository swallows failures internally)
         await this.adminRepository.insertAuditLog({
@@ -255,16 +247,12 @@ export class AdminServiceImpl extends AdminService {
         if (!user) throw new AdminUserNotFoundException();
 
         // Enqueue XP award - actual write is performed by the XP worker
-        const payload: XpAwardJobPayload = {
+        await this.gamificationFacade.awardXp({
             userId,
             source: "admin_grant",
             xp_amount: dto.delta,
             note: dto.note,
-        };
-        void this.messagingService.dispatchJob(
-            ADMIN_MANIFEST.jobs.XP_AWARD.jobName,
-            payload,
-        );
+        });
 
         await this.adminRepository.insertAuditLog({
             adminId,
@@ -332,7 +320,6 @@ export class AdminServiceImpl extends AdminService {
         if (!report) throw new ReportNotFoundException();
 
         let newStatus: string;
-        let payload: AdminMessageJobPayload;
 
         switch (dto.action) {
             case REPORT_ACTION.DISMISS:
@@ -346,29 +333,17 @@ export class AdminServiceImpl extends AdminService {
                     ADMIN_REEL_STATUS.DISABLED,
                 );
                 await this.adminRepository.evictReelCache(report.reel_id);
-                payload = {
-                    userId: report.creator_id,
-                    meta: {
-                        ...(dto.note && { note: dto.note }),
-                    }
-                };
-                void this.messagingService.dispatchJob(
-                    ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
-                    payload,
+                void this.notificationService.enqueueAdminMessage(
+                    report.creator_id,
+                    { ...(dto.note && { note: dto.note }) },
                 );
                 break;
 
             case REPORT_ACTION.WARN_CREATOR:
                 newStatus = REPORT_STATUS.ACTIONED;
-                payload = {
-                    userId: report.creator_id,
-                    meta: {
-                        ...(dto.note && { note: dto.note }),
-                    }
-                };
-                void this.messagingService.dispatchJob(
-                    ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
-                    payload,
+                void this.notificationService.enqueueAdminMessage(
+                    report.creator_id,
+                    { ...(dto.note && { note: dto.note }) },
                 );
                 break;
 
@@ -434,15 +409,9 @@ export class AdminServiceImpl extends AdminService {
 
         // Notify creator only when disabling
         if (dto.status === ADMIN_REEL_STATUS.DISABLED) {
-            const payload: AdminMessageJobPayload = {
-                userId: reel.creator_id,
-                meta: {
-                    ...(dto.note && { note: dto.note }),
-                }
-            };
-            void this.messagingService.dispatchJob(
-                ADMIN_MANIFEST.jobs.ADMIN_MESSAGE.jobName,
-                payload,
+            void this.notificationService.enqueueAdminMessage(
+                reel.creator_id,
+                { ...(dto.note && { note: dto.note }) },
             );
         }
 

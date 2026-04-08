@@ -38,6 +38,7 @@ import { TagsModule } from "@modules/tags/tags.module";
 import { ViewCountSyncService } from "./services/view-count-sync.service";
 import { ReelInteractionsSubscriber } from "./subscribers/reel-interaction.subscriber";
 import { MessagingModule } from "@modules/messaging";
+import { FeedModule } from "@modules/feed";
 
 /**
  * Registers Reels runtime dependencies, queue bindings, and exported services.
@@ -46,6 +47,7 @@ import { MessagingModule } from "@modules/messaging";
     imports: [
         TagsModule,
         MessagingModule,
+        FeedModule,
     ],
     controllers: [ReelsController],
     providers: [

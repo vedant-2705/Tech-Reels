@@ -10,21 +10,8 @@
 
 import { ModuleMessagingManifest } from "@modules/messaging/messaging.types";
 import { REDIS_CHANNELS } from "@modules/messaging/messaging.constants";
-import { QUEUES } from "src/queues/queue-names";
 
 export const USERS_MANIFEST = {
-    jobs: {
-        REBUILD_FEED: {
-            jobName: "rebuild",
-            queue: QUEUES.FEED_BUILD,
-            reason: "User profile updated - rebuild feed",
-        },
-        NEW_USER: {
-            jobName: "new_user",
-            queue: QUEUES.FEED_BUILD,
-            reason: "New user - build initial feed",
-        },
-    },
     events: {
         ACCOUNT_DEACTIVATED: {
             eventType: "ACCOUNT_DEACTIVATED",

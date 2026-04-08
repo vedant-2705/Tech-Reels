@@ -22,6 +22,7 @@ import { AuthSessionService } from "./auth-session.service";
 import { TokenService } from "./services/token.service";
 import { UsernameGeneratorService } from "./services/username-generator.service";
 import { MessagingModule } from "@modules/messaging";
+import { NotificationModule } from "@modules/notification/notification.module";
 
 /**
  * Registers auth runtime dependencies and JWT signing/verification support.
@@ -47,6 +48,7 @@ import { MessagingModule } from "@modules/messaging";
         }),
 
         MessagingModule,
+        NotificationModule,
     ],
     controllers: [AuthController],
     providers: [

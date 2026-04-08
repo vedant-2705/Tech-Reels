@@ -26,6 +26,7 @@ import { FeedBuilderService } from "./services/feed-builder.service";
 import { TrendingReelsCron } from "./crons/trending-reels.cron";
 import { AffinityDecayCron } from "./crons/affinity-decay.cron";
 import { MessagingModule } from "@modules/messaging";
+import { FeedFacade } from "./feed.facade";
 
 @Module({
     imports: [
@@ -43,6 +44,6 @@ import { MessagingModule } from "@modules/messaging";
         TrendingReelsCron,
         AffinityDecayCron,
     ],
-    exports: [FeedBuilderService],
+    exports: [FeedBuilderService, FeedFacade],
 })
 export class FeedModule {}

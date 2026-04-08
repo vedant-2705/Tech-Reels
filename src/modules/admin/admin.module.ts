@@ -24,6 +24,7 @@ import { AdminRepository } from "./admin.repository";
 
 import { AuthModule } from "@modules/auth/auth.module";
 import { AdminServiceImpl } from "./admin.service";
+import { GamificationModule } from "@modules/gamification";
 import { MessagingModule } from "@modules/messaging";
 
 /**
@@ -38,6 +39,7 @@ import { MessagingModule } from "@modules/messaging";
          */
         AuthModule,
         MessagingModule,
+        GamificationModule,
     ],
     controllers: [AdminController],
     providers: [

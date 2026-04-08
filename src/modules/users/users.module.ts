@@ -14,6 +14,7 @@ import { UsersService } from "./users.service.abstract";
 import { UsersServiceImpl } from "./users.service";
 import { UsersRepository } from "./users.repository";
 import { MessagingModule } from "@modules/messaging";
+import { FeedModule } from "@modules/feed";
 
 /**
  * Registers all users-module dependencies.
@@ -23,6 +24,7 @@ import { MessagingModule } from "@modules/messaging";
     imports: [
         AuthModule,
         MessagingModule,
+        FeedModule,
     ],
     controllers: [UsersController],
     providers: [
