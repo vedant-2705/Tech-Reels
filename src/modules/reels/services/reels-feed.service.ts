@@ -60,7 +60,7 @@ export class ReelsFeedService {
         const feedLength = await this.reelsRepository.getFeedLength(userId);
 
         if (feedLength === 0) {
-            void this.feedFacade.feedColdStart(userId);
+            void this.feedFacade.triggerColdStart(userId);
 
             const RETRY_COUNT = 3;
             const RETRY_DELAY_MS = 300;

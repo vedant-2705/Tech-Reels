@@ -75,9 +75,3 @@ export const USERS_ACCOUNT_STATUSES = {
     ACTIVE: "active",
     DEACTIVATED: "deactivated",
 } as const;
-
-
-export const REASONS = {
-    FEED_REBUILD: "User profile updated - rebuild feed",
-    NEW_USER: "New user - build initial feed",
-} as const;

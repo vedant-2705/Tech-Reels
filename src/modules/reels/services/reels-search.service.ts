@@ -143,7 +143,7 @@ export class ReelsSearchService {
                 page,
             );
 
-        void this.feedFacade.feedSearch(userId, matchedTags.map((t) => t.id));
+        void this.feedFacade.triggerSearchBuild(userId);
 
         return {
             data: pageReelsMapped,
@@ -184,6 +184,8 @@ export class ReelsSearchService {
             REELS_MANIFEST.events.REEL_SHARED.eventType,
             payload,
         );
+
+        void this.feedFacade.triggerShareBuild(userId);
 
         const appBaseUrl =
             this.config.get<string>(REELS_APP_ENV.APP_BASE_URL) ?? "";

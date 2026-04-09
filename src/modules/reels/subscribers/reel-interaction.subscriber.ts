@@ -20,6 +20,7 @@ import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "@database/database.service";
 import { RedisService } from "@redis/redis.service";
+import { AppMessage, BaseSubscriber } from "@modules/messaging";
 
 import { ReelEventRegistry } from "../events/registry/reel-event.registry";
 import { IReelEventHandler } from "../events/handlers/ireel-event-handler.interface";
@@ -31,7 +32,7 @@ import { IReelEventHandler } from "../events/handlers/ireel-event-handler.interf
 // ---------------------------------------------------------------------------
 import "../events/handlers/reel-watch-ended.handler";
 import "../events/handlers/reel-shared.handler";
-import { AppMessage, BaseSubscriber } from "@modules/messaging";
+import "../events/handlers/reel-cache-warm.handler";
 
 /**
  * Manages a dedicated Redis subscriber connection.

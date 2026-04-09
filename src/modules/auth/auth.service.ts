@@ -43,12 +43,12 @@ import { USERS_ACCOUNT_STATUS } from "@common/constants/shared.constants";
 import { MessagingService } from "@modules/messaging";
 import { AUTH_MANIFEST } from "./auth.messaging";
 import {
-    NewUserJobPayload,
     UserLoggedInEventPayload,
     UserLoggedOutEventPayload,
     UserRegisteredEventPayload,
 } from "./auth.interface";
 import { NotificationService } from "@modules/notification/notification.service";
+import { FeedFacade } from "@modules/feed";
 
 type InactiveAccountStatus = Exclude<AccountStatus, "active">;
 
@@ -72,6 +72,7 @@ export class AuthServiceImpl extends AuthService {
         private readonly usernameGeneratorService: UsernameGeneratorService,
         private readonly messagingService: MessagingService,
         private readonly notificationService: NotificationService,
+        private readonly feedFacade: FeedFacade,
     ) {
         super();
     }
@@ -123,14 +124,7 @@ export class AuthServiceImpl extends AuthService {
 
         void this.notificationService.enqueueWelcomeEmail(user.id);
 
-        const newUserPayload: NewUserJobPayload = {
-            userId: user.id,
-            reason: AUTH_MANIFEST.jobs.NEW_USER.reason,
-        };
-        void this.messagingService.dispatchJob(
-            AUTH_MANIFEST.jobs.NEW_USER.jobName,
-            newUserPayload,
-        );
+        void this.feedFacade.triggerNewUserBuild(user.id);
 
         // 8. Return response
         return this.buildAuthResponse(user, tokens, false);
@@ -260,11 +254,6 @@ export class AuthServiceImpl extends AuthService {
                 needsOnboarding = true;
 
                 // Async side effects for new users
-                // const payload: WelcomeEmailJobPayload = { userId: user.id };
-                // void this.messagingService.dispatchJob(
-                //     AUTH_MANIFEST.jobs.WELCOME_EMAIL.jobName,
-                //     payload,
-                // );
                 void this.notificationService.enqueueWelcomeEmail(user.id);
             }
         }

@@ -46,7 +46,6 @@ import { InvalidAvatarKeyException } from "./exceptions/invalid-avatar-key.excep
 
 import { compareHash } from "@common/utils/hash.util";
 import {
-    REASONS,
     USERS_ACCOUNT_STATUSES,
     USERS_MESSAGES,
     USERS_REDIS_KEYS,
@@ -176,7 +175,7 @@ export class UsersServiceImpl extends UsersService {
                 `${USERS_REDIS_KEYS.FEED_QUEUE_PREFIX}:${userId}`,
             );
 
-            void this.feedFacade.feedRebuild(userId, REASONS.FEED_REBUILD)
+            void this.feedFacade.triggerRebuild(userId);
         }
 
         return {
@@ -218,7 +217,7 @@ export class UsersServiceImpl extends UsersService {
         await this.usersRepository.seedTopicAffinity(userId, dto.topics, 1.0);
 
         // Enqueue feed build - fire and forget
-        void this.feedFacade.feedRebuild(userId, REASONS.NEW_USER);
+        void this.feedFacade.triggerOnboardingBuild(userId);
 
         return {
             message: USERS_MESSAGES.ONBOARDING_COMPLETE,

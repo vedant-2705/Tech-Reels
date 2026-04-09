@@ -26,6 +26,7 @@ import { AuthModule } from "@modules/auth/auth.module";
 import { AdminServiceImpl } from "./admin.service";
 import { GamificationModule } from "@modules/gamification";
 import { MessagingModule } from "@modules/messaging";
+import { NotificationModule } from "@modules/notification/notification.module";
 
 /**
  * Registers Admin runtime dependencies and cross-module imports.
@@ -40,6 +41,7 @@ import { MessagingModule } from "@modules/messaging";
         AuthModule,
         MessagingModule,
         GamificationModule,
+        NotificationModule,
     ],
     controllers: [AdminController],
     providers: [

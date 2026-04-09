@@ -23,6 +23,7 @@ import { TokenService } from "./services/token.service";
 import { UsernameGeneratorService } from "./services/username-generator.service";
 import { MessagingModule } from "@modules/messaging";
 import { NotificationModule } from "@modules/notification/notification.module";
+import { FeedModule } from "@modules/feed";
 
 /**
  * Registers auth runtime dependencies and JWT signing/verification support.
@@ -47,6 +48,7 @@ import { NotificationModule } from "@modules/notification/notification.module";
             }),
         }),
 
+        FeedModule,
         MessagingModule,
         NotificationModule,
     ],
