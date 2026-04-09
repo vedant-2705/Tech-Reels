@@ -1,8 +1,17 @@
-import { MessagingService } from "@modules/messaging";
+/**
+ * @module modules/feed/feed.facade
+ * @description
+ * Façade for triggering feed build operations from other modules.
+ * Callers express business intent — Feed decides how to fulfil it.
+ *
+ * Consumers: Auth, Users, Reels (feed sub-service, search sub-service)
+ */
+
 import { Injectable } from "@nestjs/common";
+import { MessagingService } from "@modules/messaging";
 import { FEED_MANIFEST } from "./feed.messaging";
-import { FeedRebuildJobPayload } from "./feed.interface";
-import { FeedColdStartJobPayload, FeedSearchJobPayload } from "@modules/reels/reels.interface";
+import { FeedBuildJobPayload } from "./feed.interface";
+import { FEED_JOB_REASONS } from "./feed.constants";
 import { FeedFacade } from "./feed.facade.abstract";
 
 @Injectable()
@@ -12,46 +21,67 @@ export class FeedFacadeImpl extends FeedFacade {
     }
 
     /** @inheritdoc */
-    feedRebuild(userId: string, reason: string): void {
-        const payload: FeedRebuildJobPayload = { userId, reason };
+    triggerNewUserBuild(userId: string): void {
+        this.dispatch(
+            userId,
+            FEED_JOB_REASONS.NEW_USER,
+            FEED_MANIFEST.jobs.NEW_USER_REGISTERED.jobName,
+        );
+    }
 
-        void this.dispatchFeedBuildJob<typeof payload>(
+    /** @inheritdoc */
+    triggerRebuild(userId: string): void {
+        this.dispatch(
+            userId,
+            FEED_JOB_REASONS.REBUILD,
             FEED_MANIFEST.jobs.FEED_REBUILD.jobName,
-            payload,
         );
     }
 
     /** @inheritdoc */
-    feedColdStart(userId: string): void {
-        const payload: FeedColdStartJobPayload = {
+    triggerOnboardingBuild(userId: string): void {
+        this.dispatch(
             userId,
-            reason: "No reels in feed, triggering cold start",
-        };
-        void this.dispatchFeedBuildJob<typeof payload>(
+            FEED_JOB_REASONS.NEW_USER,
+            FEED_MANIFEST.jobs.NEW_USER_REGISTERED.jobName,
+        );
+    }
+
+    /** @inheritdoc */
+    triggerColdStart(userId: string): void {
+        this.dispatch(
+            userId,
+            FEED_JOB_REASONS.COLD_START,
             FEED_MANIFEST.jobs.FEED_COLD_START.jobName,
-            payload,
         );
     }
 
     /** @inheritdoc */
-    feedSearch(userId: string,  tagIds: string[]): void {
-        const payload: FeedSearchJobPayload = {
+    triggerSearchBuild(userId: string): void {
+        this.dispatch(
             userId,
-            tagIds,
-            reason: "User performed a search, triggering search-based feed build",
-        };
-        void this.dispatchFeedBuildJob<typeof payload>(
+            FEED_JOB_REASONS.SEARCH,
             FEED_MANIFEST.jobs.FEED_SEARCH.jobName,
-            payload,
+        );
+    }
+
+    /** @inheritdoc */
+    triggerShareBuild(userId: string): void {
+        this.dispatch(
+            userId,
+            FEED_JOB_REASONS.SHARE,
+            FEED_MANIFEST.jobs.FEED_SHARE.jobName,
         );
     }
 
     /**
-     * Private helper to dispatch feed build jobs.
-     * @param jobName Job name to dispatch, must be one of the feed build job names defined in FEED_MANIFEST
-     * @param payload Payload for the job, must match the expected payload type for the specified job name
+     * Wraps dispatching a feed build job with the appropriate payload and metadata.
+     * @param userId ID of the user for whom to build the feed
+     * @param reason Reason for triggering the feed build
+     * @param jobName Name of the job to dispatch, used to route to the correct queue and worker
      */
-    private dispatchFeedBuildJob<T>(jobName: string, payload: T): void {
+    private dispatch(userId: string, reason: string, jobName: string): void {
+        const payload: FeedBuildJobPayload = { userId, reason };
         void this.messagingService.dispatchJob(jobName, payload);
     }
 }

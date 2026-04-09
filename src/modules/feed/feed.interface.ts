@@ -49,3 +49,12 @@ export interface FeedBuildJobPayload {
 export interface FeedRebuildJobPayload extends FeedBuildJobPayload { }
 
 export interface FeedBuildForNewUserJobPayload extends FeedBuildJobPayload { }
+
+/**
+ * Published by FeedBuildWorker after a successful feed build.
+ */
+export interface FeedBuiltEventPayload {
+    userId: string;
+    /** First N reel IDs from the built feed - subset for pre-warming only. */
+    reelIds: string[];
+}

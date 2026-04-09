@@ -9,6 +9,7 @@
  * in their own manifests.
  */
 
+import { REDIS_CHANNELS } from "@modules/messaging/messaging.constants";
 import { ModuleMessagingManifest } from "@modules/messaging/messaging.types";
 import { QUEUES } from "src/queues/queue-names";
 
@@ -75,6 +76,16 @@ export const FEED_MANIFEST = {
         FEED_SHARE: {
             jobName: "share",
             queue: QUEUES.FEED_BUILD,
+        },
+    },
+    events: {
+        /**
+         * Published after a feed is successfully built.
+         * Reels subscribes to this to warm reel:meta cache for the built reels.
+         */
+        FEED_BUILT: {
+            eventType: "FEED_BUILT",
+            channel: REDIS_CHANNELS.FEED_EVENTS,
         },
     },
 } as const satisfies ModuleMessagingManifest;

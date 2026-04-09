@@ -290,6 +290,8 @@ export const FEED_JOB_REASONS = {
     SEARCH: "search",
     /** Feed build triggered by a user share action. */
     SHARE: "share",
+    /** Feed build triggered by a user requesting a rebuild. */
+    REBUILD: "rebuild",
 } as const;
 
 /**

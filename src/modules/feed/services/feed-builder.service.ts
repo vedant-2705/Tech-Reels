@@ -14,7 +14,7 @@
  *   6. RPUSH to feed:{userId} + LTRIM to FEED_MAX_LIST_SIZE + EXPIRE
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 
 import { RedisService } from "@redis/redis.service";
 import { FeedRepository } from "../feed.repository";
@@ -22,12 +22,10 @@ import { CandidateGeneratorService } from "./candidate-generator.service";
 import { ReelScorerService, ScoredReel } from "./reel-scorer.service";
 import {
     FEED_MAX_LIST_SIZE,
-    FEED_PRECACHE_SIZE,
     FEED_REDIS_KEYS,
     FEED_TARGET_SIZE,
     FEED_TTL,
 } from "../feed.constants";
-import { ReelsProcessingService } from "@modules/reels/reels-processing.service";
 
 /**
  * Builds and writes a personalised feed list for a user.
@@ -48,7 +46,6 @@ export class FeedBuilderService {
         private readonly scorer: ReelScorerService,
         private readonly feedRepository: FeedRepository,
         private readonly redis: RedisService,
-        private readonly reelsProcessingService: ReelsProcessingService,
     ) {}
 
     /**
@@ -120,10 +117,6 @@ export class FeedBuilderService {
         this.logger.log(
             `Feed built for userId=${userId}: pushed=${selected.length} total_after_trim≤${FEED_MAX_LIST_SIZE}`,
         );
-
-        // Pre-populate reel:meta cache for first FEED_PRECACHE_SIZE reels
-        // Fire and forget - cache miss is always safe, never block the worker
-        void this.reelsProcessingService.setReelsToCache(selected.slice(0, FEED_PRECACHE_SIZE));
     }
 
     /**

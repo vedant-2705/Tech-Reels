@@ -12,7 +12,7 @@
  * ScheduleModule.forRoot() is registered in AppModule - not imported here.
  */
 
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 
 import { ReelsModule } from "@modules/reels/reels.module";
 
@@ -26,11 +26,11 @@ import { FeedBuilderService } from "./services/feed-builder.service";
 import { TrendingReelsCron } from "./crons/trending-reels.cron";
 import { AffinityDecayCron } from "./crons/affinity-decay.cron";
 import { MessagingModule } from "@modules/messaging";
-import { FeedFacade } from "./feed.facade";
+import { FeedFacade } from "./feed.facade.abstract";
+import { FeedFacadeImpl } from "./feed.facade";
 
 @Module({
     imports: [
-        ReelsModule,
         MessagingModule,
     ],
     providers: [
@@ -43,6 +43,7 @@ import { FeedFacade } from "./feed.facade";
         FeedBuilderService,
         TrendingReelsCron,
         AffinityDecayCron,
+        { provide: FeedFacade, useClass: FeedFacadeImpl },
     ],
     exports: [FeedBuilderService, FeedFacade],
 })
